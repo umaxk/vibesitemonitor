@@ -1,0 +1,6 @@
+.env
+config.json
+monitor.log
+__pycache__/
+*.pyc
+.git/

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Site Monitor</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div id="login-screen" class="login-screen hidden">
+        <div class="login-box">
+            <h1>Site Monitor</h1>
+            <p>Введите пароль для доступа</p>
+            <input type="password" id="password-input" placeholder="Пароль" autofocus>
+            <button id="login-btn">Войти</button>
+            <p id="login-error" class="error hidden">Неверный пароль</p>
+        </div>
+    </div>
+
+    <div id="app" class="hidden">
+        <header>
+            <h1>Site Monitor</h1>
+            <div class="header-actions">
+                <span id="interval-badge" class="badge clickable" title="Настройки"></span>
+                <button id="add-site-btn" class="btn-icon" title="Добавить сайт">+</button>
+                <button id="logout-btn" class="btn-secondary">Выйти</button>
+            </div>
+        </header>
+
+        <main>
+            <section id="sites-grid" class="sites-grid"></section>
+        </main>
+    </div>
+
+    <div id="settings-modal" class="modal hidden">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>Настройки</h2>
+                <button id="settings-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Интервал проверки по умолчанию (сек)</label>
+                    <input type="number" id="interval-input" min="5" max="3600">
+                </div>
+                <div class="form-group">
+                    <label>Таймаут (сек)</label>
+                    <input type="number" id="timeout-input" min="1" max="60">
+                </div>
+                <button id="save-settings-btn" class="btn-primary">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="add-modal" class="modal hidden">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>Добавить сайт</h2>
+                <button id="add-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>URL *</label>
+                    <input type="url" id="new-site-url" placeholder="https://example.com">
+                </div>
+                <div class="form-group">
+                    <label>Название</label>
+                    <input type="text" id="new-site-name" placeholder="Example">
+                </div>
+                <div class="form-group">
+                    <label>Интервал проверки (сек) — необязательно</label>
+                    <input type="number" id="new-site-interval" min="5" max="3600" placeholder="По умолчанию">
+                </div>
+                <button id="confirm-add-btn" class="btn-primary">Добавить</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title"></h2>
+                <button id="modal-close">&times;</button>
+            </div>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
