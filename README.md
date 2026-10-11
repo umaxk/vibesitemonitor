@@ -21,8 +21,8 @@
 1. Клонируйте репозиторий:
 
 ```bash
-git clone https://github.com/yourusername/site-monitor.git
-cd site-monitor
+git clone https://github.com/umaxk/vibesitemonitor
+cd vibesitemonitor
 ```
 
 2. Создайте файл `.env` с паролем:
