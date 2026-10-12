@@ -32,8 +32,10 @@ class SiteCreate(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
+    project_name: str = Field(default="VibeMonitor", min_length=1, max_length=100)
     check_interval_seconds: int = Field(..., ge=5, le=3600)
     timeout_seconds: int = Field(..., ge=1, le=60)
+    incident_hide_hours: int = Field(..., ge=1, le=720)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -89,12 +91,15 @@ async def get_sites(request: Request):
                 "latency_ms": state.latency_ms if state else None,
                 "error": state.error if state else None,
                 "check_interval_seconds": site.get("check_interval_seconds"),
+                "last_incident_time": state.last_incident_time if state else None,
             }
         )
     return {
         "sites": result,
+        "project_name": cfg.get("project_name", "VibeMonitor"),
         "check_interval_seconds": cfg.get("check_interval_seconds", 60),
         "timeout_seconds": cfg.get("timeout_seconds", 10),
+        "incident_hide_hours": cfg.get("incident_hide_hours", 12),
     }
 
 
@@ -128,8 +133,10 @@ async def delete_site(request: Request, url: str):
 async def update_settings(request: Request, settings: SettingsUpdate):
     require_auth(request)
     cfg = app_config.load_config()
+    cfg["project_name"] = settings.project_name
     cfg["check_interval_seconds"] = settings.check_interval_seconds
     cfg["timeout_seconds"] = settings.timeout_seconds
+    cfg["incident_hide_hours"] = settings.incident_hide_hours
     app_config.save_config(cfg)
     monitor.update_settings(settings.check_interval_seconds, settings.timeout_seconds)
     return {"ok": True}

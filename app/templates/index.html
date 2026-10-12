@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Site Monitor</title>
+    <title>VibeMonitor</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <div id="login-screen" class="login-screen hidden">
         <div class="login-box">
-            <h1>Site Monitor</h1>
+            <h1 id="login-title">VibeMonitor</h1>
             <p>Введите пароль для доступа</p>
             <input type="password" id="password-input" placeholder="Пароль" autofocus>
             <button id="login-btn">Войти</button>
@@ -19,7 +19,7 @@
 
     <div id="app" class="hidden">
         <header>
-            <h1>Site Monitor</h1>
+            <h1 id="app-title">VibeMonitor</h1>
             <div class="header-actions">
                 <span id="interval-badge" class="badge clickable" title="Настройки"></span>
                 <button id="add-site-btn" class="btn-icon" title="Добавить сайт">+</button>
@@ -40,12 +40,20 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
+                    <label>Название проекта</label>
+                    <input type="text" id="project-name-input" maxlength="100">
+                </div>
+                <div class="form-group">
                     <label>Интервал проверки по умолчанию (сек)</label>
                     <input type="number" id="interval-input" min="5" max="3600">
                 </div>
                 <div class="form-group">
                     <label>Таймаут (сек)</label>
                     <input type="number" id="timeout-input" min="1" max="60">
+                </div>
+                <div class="form-group">
+                    <label>Скрывать инциденты после (часов)</label>
+                    <input type="number" id="incident-hide-input" min="1" max="720">
                 </div>
                 <button id="save-settings-btn" class="btn-primary">Сохранить</button>
             </div>

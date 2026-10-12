@@ -392,6 +392,11 @@ main {
     gap: 0.3rem;
 }
 
+.incident-badge {
+    color: #f59e0b !important;
+    font-weight: 500;
+}
+
 .modal {
     position: fixed;
     inset: 0;

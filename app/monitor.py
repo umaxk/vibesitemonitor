@@ -45,6 +45,7 @@ class SiteState:
     history: List[CheckResult] = field(default_factory=list)
     check_interval: int | None = None
     next_check: float | None = None
+    last_incident_time: float | None = None
 
 
 class Monitor:
@@ -135,6 +136,7 @@ class Monitor:
             interval = state.check_interval or self._interval
             state.next_check = result.timestamp + interval
             if result.status == "down":
+                state.last_incident_time = result.timestamp
                 logger.warning(
                     "Site DOWN: %s | error=%s | http_code=%s",
                     result.url,

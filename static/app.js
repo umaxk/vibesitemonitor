@@ -29,13 +29,15 @@ const API = {
         });
         return res.ok;
     },
-    async updateSettings(interval, timeout) {
+    async updateSettings(projectName, interval, timeout, incidentHideHours) {
         const res = await fetch('/api/settings', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+                project_name: projectName,
                 check_interval_seconds: interval,
-                timeout_seconds: timeout
+                timeout_seconds: timeout,
+                incident_hide_hours: incidentHideHours
             })
         });
         return res.ok;
@@ -49,6 +51,8 @@ const API = {
 
 let sitesData = [];
 let refreshInterval = null;
+let projectName = 'VibeMonitor';
+let incidentHideHours = 12;
 
 function showLogin() {
     document.getElementById('login-screen').classList.remove('hidden');
@@ -79,9 +83,14 @@ async function loadSites() {
     try {
         const data = await API.getSites();
         sitesData = data.sites;
+        projectName = data.project_name;
+        incidentHideHours = data.incident_hide_hours;
         renderSites();
+        document.getElementById('app-title').textContent = projectName;
+        document.getElementById('login-title').textContent = projectName;
+        document.title = projectName;
         document.getElementById('interval-badge').textContent =
-            `Интервал: ${data.check_interval_seconds}с | Таймаут: ${data.timeout_seconds}с`;
+            `Сайтов: ${sitesData.length} | Интервал: ${data.check_interval_seconds}с`;
     } catch {
         showLogin();
     }
@@ -89,8 +98,10 @@ async function loadSites() {
 
 function openSettingsModal() {
     API.getSites().then(data => {
+        document.getElementById('project-name-input').value = data.project_name;
         document.getElementById('interval-input').value = data.check_interval_seconds;
         document.getElementById('timeout-input').value = data.timeout_seconds;
+        document.getElementById('incident-hide-input').value = data.incident_hide_hours;
         document.getElementById('settings-modal').classList.remove('hidden');
     });
 }
@@ -105,7 +116,9 @@ function renderSites() {
             </div>`;
         return;
     }
-    grid.innerHTML = sitesData.map(site => `
+    grid.innerHTML = sitesData.map(site => {
+        const incidentInfo = getIncidentInfo(site);
+        return `
         <div class="site-card ${site.status}" onclick="openDetail('${site.url}')">
             <div class="site-card-header">
                 <span class="site-name">${escapeHtml(site.name)}</span>
@@ -117,10 +130,26 @@ function renderSites() {
                 ${site.latency_ms ? `<span>${site.latency_ms}мс</span>` : ''}
                 ${site.last_check ? `<span>${formatTime(site.last_check)}</span>` : ''}
                 ${site.check_interval_seconds ? `<span>Интервал: ${site.check_interval_seconds}с</span>` : ''}
+                ${incidentInfo ? `<span class="incident-badge">${incidentInfo}</span>` : ''}
                 ${site.error ? `<span style="color:#ef4444">${escapeHtml(site.error)}</span>` : ''}
             </div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
+}
+
+function getIncidentInfo(site) {
+    if (!site.last_incident_time) return null;
+    const now = Date.now() / 1000;
+    const diffSeconds = now - site.last_incident_time;
+    const diffHours = diffSeconds / 3600;
+    if (diffHours > incidentHideHours) return null;
+    if (diffHours >= 1) {
+        const hours = Math.floor(diffHours);
+        const minutes = Math.floor((diffHours - hours) * 60);
+        return `Инцидент: ${hours}ч ${minutes}мин назад`;
+    }
+    const minutes = Math.floor(diffSeconds / 60);
+    return `Инцидент: ${minutes}мин назад`;
 }
 
 async function openDetail(url) {
@@ -239,10 +268,12 @@ document.getElementById('confirm-add-btn').addEventListener('click', async () =>
 });
 
 document.getElementById('save-settings-btn').addEventListener('click', async () => {
+    const projectName = document.getElementById('project-name-input').value.trim();
     const interval = parseInt(document.getElementById('interval-input').value);
     const timeout = parseInt(document.getElementById('timeout-input').value);
-    if (interval >= 5 && timeout >= 1) {
-        await API.updateSettings(interval, timeout);
+    const incidentHideHours = parseInt(document.getElementById('incident-hide-input').value);
+    if (projectName && interval >= 5 && timeout >= 1 && incidentHideHours >= 1) {
+        await API.updateSettings(projectName, interval, timeout, incidentHideHours);
         document.getElementById('settings-modal').classList.add('hidden');
         loadSites();
     }

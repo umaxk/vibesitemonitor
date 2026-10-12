@@ -8,9 +8,12 @@ CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 _lock = threading.Lock()
 
 DEFAULT_CONFIG = {
+    "project_name": "VibeMonitor",
     "check_interval_seconds": 60,
     "timeout_seconds": 10,
+    "incident_hide_hours": 12,
     "sites": [],
+    "session_tokens": [],
 }
 
 
