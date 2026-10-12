@@ -65,10 +65,11 @@ function showApp() {
 }
 
 async function checkAuth() {
+    showApp();
+    await loadSites();
+    startRefresh();
     try {
         await API.getSites();
-        showApp();
-        startRefresh();
     } catch {
         showLogin();
     }
