@@ -170,7 +170,7 @@ header h1 {
 main {
     max-width: 1280px;
     margin: 0 auto;
-    padding: 1.75rem 2rem 3rem;
+    padding: 1.75rem 2rem 6rem;
 }
 
 /* Inputs and buttons */
@@ -294,6 +294,18 @@ select {
 .btn-icon.small:hover {
     color: var(--text);
     border-color: var(--accent);
+}
+
+.add-site-fab {
+    position: fixed;
+    right: 1.5rem;
+    bottom: 1.5rem;
+    z-index: 50;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    font-size: 1.8rem;
+    box-shadow: var(--shadow);
 }
 
 /* Badges */
@@ -1034,7 +1046,7 @@ body.light .modal {
 #toast-container {
     position: fixed;
     right: 1rem;
-    bottom: 1rem;
+    bottom: 5.5rem;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
@@ -1199,7 +1211,12 @@ body.light .modal {
     }
 
     main {
-        padding: 1rem;
+        padding: 1rem 1rem 6rem;
+    }
+
+    .add-site-fab {
+        right: 1rem;
+        bottom: calc(1rem + env(safe-area-inset-bottom));
     }
 
     .header-actions {
