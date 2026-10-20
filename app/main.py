@@ -154,6 +154,30 @@ async def add_site(request: Request, site: SiteCreate):
     return {"ok": True}
 
 
+@app.put("/api/sites/{url:path}")
+async def update_site(request: Request, url: str, site: SiteCreate):
+    require_auth(request)
+    cfg = app_config.load_config()
+    sites = cfg.get("sites", [])
+    index = next((i for i, s in enumerate(sites) if s["url"] == url), None)
+    if index is None:
+        raise HTTPException(status_code=404, detail="Site not found")
+    new_url = str(site.url)
+    if any(
+        i != index and s["url"].rstrip("/") == new_url.rstrip("/")
+        for i, s in enumerate(sites)
+    ):
+        raise HTTPException(status_code=409, detail="Site already exists")
+    site_data = {"url": new_url, "name": site.name or new_url}
+    if site.check_interval_seconds:
+        site_data["check_interval_seconds"] = site.check_interval_seconds
+    sites[index] = site_data
+    cfg["sites"] = sites
+    app_config.save_config(cfg)
+    monitor.update_site(url, new_url, site_data["name"], site.check_interval_seconds)
+    return {"ok": True}
+
+
 @app.delete("/api/sites/{url:path}")
 async def delete_site(request: Request, url: str):
     require_auth(request)

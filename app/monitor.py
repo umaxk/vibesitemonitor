@@ -141,7 +141,9 @@ class Monitor:
             )
 
     def _apply_result(self, result: CheckResult) -> None:
-        state = self._states[result.url]
+        state = self._states.get(result.url)
+        if state is None:
+            return
         previous_status = state.status
         previous_check = state.last_check
 
@@ -241,6 +243,20 @@ class Monitor:
         self._wake_event.set()
 
     def wake(self):
+        self._wake_event.set()
+
+    def update_site(
+        self, old_url: str, new_url: str, name: str, interval: int | None
+    ):
+        state = self._states.pop(old_url, None)
+        if state is not None:
+            state.url = new_url
+            state.name = name
+            state.check_interval = interval
+            state.next_check = time.time()
+            for check in state.history:
+                check.url = new_url
+            self._states[new_url] = state
         self._wake_event.set()
 
     def update_settings(self, interval: int, timeout: int):
