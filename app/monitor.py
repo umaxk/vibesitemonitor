@@ -1,7 +1,9 @@
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass, field
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Dict, List
 
@@ -11,16 +13,35 @@ from app import config as app_config
 
 logger = logging.getLogger("monitor")
 
-LOG_PATH = Path(__file__).parent.parent / "monitor.log"
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_PATH),
-        logging.StreamHandler(),
-    ],
+BASE_DIR = Path(__file__).resolve().parent.parent
+LOG_PATH = Path(
+    os.environ.get("MONITOR_LOG_PATH") or (BASE_DIR / "monitor.log")
 )
+
+LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+_root_logger = logging.getLogger()
+if not any(
+    isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)
+    for h in _root_logger.handlers
+):
+    _root_logger.addHandler(logging.StreamHandler())
+
+if not any(getattr(h, "_vibemonitor_file", False) for h in _root_logger.handlers):
+    _file_handler = RotatingFileHandler(
+        LOG_PATH, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+    )
+    _file_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    )
+    _file_handler._vibemonitor_file = True
+    _root_logger.addHandler(_file_handler)
+
+_root_logger.setLevel(logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+REQUEST_HEADERS = {"User-Agent": "VibeMonitor/1.0"}
 
 
 @dataclass
@@ -53,6 +74,7 @@ class Monitor:
         self._states: Dict[str, SiteState] = {}
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
+        self._wake_event = asyncio.Event()
         self._interval = 60
         self._timeout = 10
 
@@ -73,23 +95,32 @@ class Monitor:
                 self._states[url].name = site.get("name", url)
                 self._states[url].check_interval = site.get("check_interval_seconds")
 
+    async def _status_code(self, client: httpx.AsyncClient, url: str) -> int:
+        resp = await client.head(url)
+        if resp.status_code in (403, 405, 501):
+            async with client.stream("GET", url) as get_resp:
+                return get_resp.status_code
+        return resp.status_code
+
     async def _check_site(self, url: str) -> CheckResult:
         start = time.time()
         try:
             async with httpx.AsyncClient(
-                timeout=self._timeout, follow_redirects=True
+                timeout=self._timeout,
+                follow_redirects=True,
+                headers=REQUEST_HEADERS,
             ) as client:
-                resp = await client.get(url)
-                latency = (time.time() - start) * 1000
-                status = "up" if resp.status_code < 400 else "down"
-                return CheckResult(
-                    url=url,
-                    timestamp=start,
-                    status=status,
-                    http_code=resp.status_code,
-                    latency_ms=round(latency, 1),
-                    error=None if status == "up" else f"HTTP {resp.status_code}",
-                )
+                status_code = await self._status_code(client, url)
+            latency = (time.time() - start) * 1000
+            status = "up" if status_code < 400 else "down"
+            return CheckResult(
+                url=url,
+                timestamp=start,
+                status=status,
+                http_code=status_code,
+                latency_ms=round(latency, 1),
+                error=None if status == "up" else f"HTTP {status_code}",
+            )
         except httpx.TimeoutException:
             return CheckResult(
                 url=url,
@@ -99,14 +130,49 @@ class Monitor:
                 latency_ms=None,
                 error="Timeout",
             )
-        except httpx.RequestError as e:
+        except Exception as e:  # noqa: BLE001 - a single bad site must not stop the loop
             return CheckResult(
                 url=url,
                 timestamp=start,
                 status="down",
                 http_code=None,
                 latency_ms=None,
-                error=str(e),
+                error=f"{type(e).__name__}: {e}",
+            )
+
+    def _apply_result(self, result: CheckResult) -> None:
+        state = self._states[result.url]
+        previous_status = state.status
+        previous_check = state.last_check
+
+        state.status = result.status
+        state.last_check = result.timestamp
+        state.http_code = result.http_code
+        state.latency_ms = result.latency_ms
+        state.error = result.error
+        state.history.append(result)
+        if len(state.history) > 100:
+            state.history = state.history[-100:]
+
+        interval = state.check_interval or self._interval
+        state.next_check = result.timestamp + interval
+
+        if result.status == "down":
+            if previous_status != "down" or state.last_incident_time is None:
+                state.last_incident_time = result.timestamp
+                logger.warning(
+                    "Site DOWN: %s | error=%s | http_code=%s",
+                    result.url,
+                    result.error,
+                    result.http_code,
+                )
+        elif previous_status == "down":
+            state.last_incident_time = previous_check or result.timestamp
+            logger.info(
+                "Site UP: %s | http_code=%s | latency=%sms",
+                result.url,
+                result.http_code,
+                result.latency_ms,
             )
 
     async def _run_checks(self):
@@ -116,62 +182,74 @@ class Monitor:
         self._sync_sites(cfg.get("sites", []))
 
         now = time.time()
-        tasks = []
-        for url, state in self._states.items():
-            if state.next_check is None or now >= state.next_check:
-                tasks.append(self._check_site(url))
+        tasks = {
+            url: asyncio.create_task(self._check_site(url))
+            for url, state in self._states.items()
+            if state.next_check is None or now >= state.next_check
+        }
         if not tasks:
             return
-        results = await asyncio.gather(*tasks)
-        for result in results:
-            state = self._states[result.url]
-            state.status = result.status
-            state.last_check = result.timestamp
-            state.http_code = result.http_code
-            state.latency_ms = result.latency_ms
-            state.error = result.error
-            state.history.append(result)
-            if len(state.history) > 100:
-                state.history = state.history[-100:]
-            interval = state.check_interval or self._interval
-            state.next_check = result.timestamp + interval
-            if result.status == "down":
-                state.last_incident_time = result.timestamp
-                logger.warning(
-                    "Site DOWN: %s | error=%s | http_code=%s",
-                    result.url,
-                    result.error,
-                    result.http_code,
+
+        urls = list(tasks)
+        results = await asyncio.gather(
+            *(tasks[url] for url in urls), return_exceptions=True
+        )
+        for url, result in zip(urls, results):
+            if isinstance(result, BaseException):
+                result = CheckResult(
+                    url=url,
+                    timestamp=time.time(),
+                    status="down",
+                    http_code=None,
+                    latency_ms=None,
+                    error=f"{type(result).__name__}: {result}",
                 )
+            self._apply_result(result)
+
+    def _next_wait(self) -> float:
+        deadlines = [
+            state.next_check
+            for state in self._states.values()
+            if state.next_check is not None
+        ]
+        if not deadlines:
+            return max(1.0, self._interval)
+        return max(1.0, min(deadlines) - time.time())
 
     async def _loop(self):
         while not self._stop_event.is_set():
             try:
                 await self._run_checks()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - keep the monitor alive
                 logger.error("Monitor loop error: %s", e)
-            min_interval = self._interval
-            for state in self._states.values():
-                if state.check_interval:
-                    min_interval = min(min_interval, state.check_interval)
             try:
                 await asyncio.wait_for(
-                    self._stop_event.wait(), timeout=min_interval
+                    self._wake_event.wait(), timeout=self._next_wait()
                 )
             except asyncio.TimeoutError:
                 pass
+            self._wake_event.clear()
 
     def start(self):
         if self._task is None or self._task.done():
             self._stop_event.clear()
+            self._wake_event.clear()
             self._task = asyncio.create_task(self._loop())
 
     def stop(self):
         self._stop_event.set()
+        self._wake_event.set()
+
+    def wake(self):
+        self._wake_event.set()
 
     def update_settings(self, interval: int, timeout: int):
         self._interval = interval
         self._timeout = timeout
+        now = time.time()
+        for state in self._states.values():
+            state.next_check = now
+        self._wake_event.set()
 
     def get_states(self) -> List[SiteState]:
         return list(self._states.values())
