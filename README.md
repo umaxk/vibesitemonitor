@@ -31,11 +31,13 @@ git clone https://github.com/umaxk/vibesitemonitor
 cd vibesitemonitor
 ```
 
-2. Создайте файл `.env` с паролем:
+2. Создайте файл `.env` из примера и замените пароль:
 
 ```bash
-echo "MONITOR_PASSWORD=your_secure_password" > .env
+cp .env.example .env
 ```
+
+По умолчанию в примере пароль `change_me` — обязательно измените его в `.env`.
 
 3. Запустите контейнер:
 
@@ -110,6 +112,7 @@ mv config.json monitor.log data/
 │   ├── style.css         # Стили
 │   └── app.js            # Клиентская логика
 ├── data/                 # config.json и monitor.log (не в git)
+├── .env.example          # пример переменных окружения
 ├── Dockerfile
 ├── docker-compose.yml
 └── requirements.txt
