@@ -258,7 +258,6 @@ async function openDetail(url) {
 
     body.innerHTML = `${content}
         <div class="site-actions">
-            <button class="btn-primary" data-action="edit-site">Редактировать</button>
             <button class="delete-btn" data-action="delete-site">Удалить сайт</button>
         </div>`;
     modal.classList.remove('hidden');
@@ -300,11 +299,13 @@ document.getElementById('sites-grid').addEventListener('click', (event) => {
 
 document.getElementById('modal-body').addEventListener('click', (event) => {
     if (!currentDetailUrl) return;
-    if (event.target.closest('[data-action="edit-site"]')) {
-        openEditModal(currentDetailUrl);
-    } else if (event.target.closest('[data-action="delete-site"]')) {
+    if (event.target.closest('[data-action="delete-site"]')) {
         deleteSite(currentDetailUrl);
     }
+});
+
+document.getElementById('edit-site-btn').addEventListener('click', () => {
+    if (currentDetailUrl) openEditModal(currentDetailUrl);
 });
 
 document.getElementById('login-btn').addEventListener('click', async () => {
