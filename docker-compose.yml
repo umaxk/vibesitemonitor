@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   monitor:
     build: .
@@ -9,6 +7,5 @@ services:
     environment:
       - MONITOR_PASSWORD=${MONITOR_PASSWORD:?Set MONITOR_PASSWORD in .env}
     volumes:
-      - ./config.json:/app/config.json
-      - ./monitor.log:/app/monitor.log
+      - ./data:/app/data
     restart: unless-stopped
