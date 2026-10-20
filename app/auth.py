@@ -1,13 +1,17 @@
-import hmac
+import hashlib
+import logging
 import os
 import secrets
 import time
 
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHash, VerifyMismatchError
 from fastapi import Request
 
-from app import config as app_config
+from app import repository
 
-PASSWORD = os.environ.get("MONITOR_PASSWORD", "")
+logger = logging.getLogger("auth")
+
 SESSION_COOKIE = "session"
 SESSION_TTL_SECONDS = int(
     os.environ.get("MONITOR_SESSION_TTL_SECONDS", str(7 * 24 * 3600))
@@ -15,67 +19,64 @@ SESSION_TTL_SECONDS = int(
 LOGIN_WINDOW_SECONDS = 60
 LOGIN_MAX_ATTEMPTS = 10
 
-_active_tokens: dict[str, float] = {}
+_hasher = PasswordHasher()
 _login_attempts: dict[str, list[float]] = {}
 
 
-def _normalize_tokens(raw) -> list[dict]:
-    now = time.time()
-    tokens = []
-    if not isinstance(raw, list):
-        return tokens
-    for item in raw:
-        if isinstance(item, str):
-            tokens.append({"token": item, "expires": now + SESSION_TTL_SECONDS})
-        elif isinstance(item, dict) and isinstance(item.get("token"), str):
-            expires = item.get("expires")
-            if not isinstance(expires, (int, float)):
-                expires = now + SESSION_TTL_SECONDS
-            tokens.append({"token": item["token"], "expires": float(expires)})
-    return tokens
+def hash_password(password: str) -> str:
+    return _hasher.hash(password)
 
 
-def _load_tokens() -> None:
-    cfg = app_config.load_config()
-    raw = cfg.get("session_tokens", [])
-    normalized = _normalize_tokens(raw)
-    now = time.time()
-    valid = {
-        item["token"]: item["expires"]
-        for item in normalized
-        if item["expires"] > now
-    }
-    _active_tokens.clear()
-    _active_tokens.update(valid)
-    if normalized != raw:
-        cfg["session_tokens"] = [
-            {"token": token, "expires": expires} for token, expires in valid.items()
-        ]
-        app_config.save_config(cfg)
-
-
-def _persist_tokens() -> None:
-    cfg = app_config.load_config()
-    cfg["session_tokens"] = [
-        {"token": token, "expires": expires}
-        for token, expires in _active_tokens.items()
-    ]
-    app_config.save_config(cfg)
-
-
-_load_tokens()
-
-
-def verify_password(password: str) -> bool:
-    if not PASSWORD:
+def verify_password(password_hash: str, password: str) -> bool:
+    try:
+        return _hasher.verify(password_hash, password)
+    except (VerifyMismatchError, InvalidHash, ValueError):
         return False
-    return hmac.compare_digest(password.encode(), PASSWORD.encode())
+
+
+def authenticate(username: str, password: str):
+    user = repository.get_user_by_username(username)
+    if not user:
+        return None
+    if not verify_password(user["password_hash"], password):
+        return None
+    return user
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def create_session(user_id: int) -> str:
+    token = secrets.token_urlsafe(32)
+    repository.create_session(
+        _token_hash(token), user_id, time.time() + SESSION_TTL_SECONDS
+    )
+    return token
+
+
+def revoke_session(token: str | None) -> None:
+    if not token:
+        return
+    repository.delete_session(_token_hash(token))
+
+
+def get_session_user(token: str | None):
+    if not token:
+        return None
+    return repository.get_session(_token_hash(token))
+
+
+def current_user(request: Request):
+    return get_session_user(request.cookies.get(SESSION_COOKIE))
 
 
 def login_allowed(client_ip: str) -> bool:
     now = time.time()
     attempts = [
-        ts for ts in _login_attempts.get(client_ip, []) if now - ts < LOGIN_WINDOW_SECONDS
+        ts
+        for ts in _login_attempts.get(client_ip, [])
+        if now - ts < LOGIN_WINDOW_SECONDS
     ]
     if len(attempts) >= LOGIN_MAX_ATTEMPTS:
         _login_attempts[client_ip] = attempts
@@ -89,26 +90,18 @@ def clear_login_attempts(client_ip: str) -> None:
     _login_attempts.pop(client_ip, None)
 
 
-def create_session_token() -> str:
-    token = secrets.token_urlsafe(32)
-    expires = time.time() + SESSION_TTL_SECONDS
-    _active_tokens[token] = expires
-    _persist_tokens()
-    return token
-
-
-def revoke_session_token(token: str | None) -> None:
-    if not token:
+def bootstrap_admin() -> None:
+    if repository.count_users() > 0:
         return
-    _active_tokens.pop(token, None)
-    _persist_tokens()
-
-
-def is_authenticated(request: Request) -> bool:
-    token = request.cookies.get(SESSION_COOKIE)
-    if not token:
-        return False
-    if _active_tokens.get(token, 0) > time.time():
-        return True
-    _load_tokens()
-    return _active_tokens.get(token, 0) > time.time()
+    username = os.environ.get("MONITOR_ADMIN_USERNAME", "admin").strip() or "admin"
+    password = os.environ.get("MONITOR_ADMIN_PASSWORD") or os.environ.get(
+        "MONITOR_PASSWORD", ""
+    )
+    if not password:
+        logger.warning(
+            "No users exist and MONITOR_PASSWORD is not set; "
+            "set it and restart to create the initial admin"
+        )
+        return
+    repository.create_user(username, hash_password(password), "admin")
+    logger.info("Created initial admin user %s", username)

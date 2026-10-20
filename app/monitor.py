@@ -1,99 +1,30 @@
 import asyncio
 import logging
-import os
 import time
-from dataclasses import dataclass, field
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
-from typing import Dict, List
 
 import httpx
 
-from app import config as app_config
+from app import logging_config, notifications, repository, ssl_check
 
+logging_config.setup()
 logger = logging.getLogger("monitor")
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-LOG_PATH = Path(
-    os.environ.get("MONITOR_LOG_PATH") or (BASE_DIR / "monitor.log")
-)
-
-LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-_root_logger = logging.getLogger()
-if not any(
-    isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)
-    for h in _root_logger.handlers
-):
-    _root_logger.addHandler(logging.StreamHandler())
-
-if not any(getattr(h, "_vibemonitor_file", False) for h in _root_logger.handlers):
-    _file_handler = RotatingFileHandler(
-        LOG_PATH, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
-    )
-    _file_handler.setFormatter(
-        logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-    )
-    _file_handler._vibemonitor_file = True
-    _root_logger.addHandler(_file_handler)
-
-_root_logger.setLevel(logging.INFO)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 REQUEST_HEADERS = {"User-Agent": "VibeMonitor/1.0"}
 
 
-@dataclass
-class CheckResult:
-    url: str
-    timestamp: float
-    status: str
-    http_code: int | None
-    latency_ms: float | None
-    error: str | None
-
-
-@dataclass
-class SiteState:
-    url: str
-    name: str
-    status: str = "unknown"
-    last_check: float | None = None
-    http_code: int | None = None
-    latency_ms: float | None = None
-    error: str | None = None
-    history: List[CheckResult] = field(default_factory=list)
-    check_interval: int | None = None
-    next_check: float | None = None
-    last_incident_time: float | None = None
-
-
 class Monitor:
     def __init__(self):
-        self._states: Dict[str, SiteState] = {}
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
         self._wake_event = asyncio.Event()
-        self._interval = 60
+        self._next_check: dict[int, float] = {}
+        self._locks: dict[int, asyncio.Lock] = {}
+        self._inflight: set[int] = set()
+        self._ssl_inflight: set[int] = set()
+        self._default_interval = 60
         self._timeout = 10
-
-    def _sync_sites(self, sites: list):
-        urls = {s["url"] for s in sites}
-        for url in list(self._states.keys()):
-            if url not in urls:
-                del self._states[url]
-        for site in sites:
-            url = site["url"]
-            if url not in self._states:
-                self._states[url] = SiteState(
-                    url=url,
-                    name=site.get("name", url),
-                    check_interval=site.get("check_interval_seconds"),
-                )
-            else:
-                self._states[url].name = site.get("name", url)
-                self._states[url].check_interval = site.get("check_interval_seconds")
+        self._last_loop: float | None = None
+        self._last_cleanup = 0.0
 
     async def _status_code(self, client: httpx.AsyncClient, url: str) -> int:
         resp = await client.head(url)
@@ -102,7 +33,7 @@ class Monitor:
                 return get_resp.status_code
         return resp.status_code
 
-    async def _check_site(self, url: str) -> CheckResult:
+    async def _check_site(self, url: str) -> dict:
         start = time.time()
         try:
             async with httpx.AsyncClient(
@@ -113,117 +44,153 @@ class Monitor:
                 status_code = await self._status_code(client, url)
             latency = (time.time() - start) * 1000
             status = "up" if status_code < 400 else "down"
-            return CheckResult(
-                url=url,
-                timestamp=start,
-                status=status,
-                http_code=status_code,
-                latency_ms=round(latency, 1),
-                error=None if status == "up" else f"HTTP {status_code}",
-            )
+            return {
+                "timestamp": start,
+                "status": status,
+                "http_code": status_code,
+                "latency_ms": round(latency, 1),
+                "error": None if status == "up" else f"HTTP {status_code}",
+            }
         except httpx.TimeoutException:
-            return CheckResult(
-                url=url,
-                timestamp=start,
-                status="down",
-                http_code=None,
-                latency_ms=None,
-                error="Timeout",
+            return {
+                "timestamp": start,
+                "status": "down",
+                "http_code": None,
+                "latency_ms": None,
+                "error": "Timeout",
+            }
+        except Exception as exc:  # noqa: BLE001 - one bad site must not stop the loop
+            return {
+                "timestamp": start,
+                "status": "down",
+                "http_code": None,
+                "latency_ms": None,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+    def _lock_for(self, site_id: int) -> asyncio.Lock:
+        lock = self._locks.get(site_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._locks[site_id] = lock
+        return lock
+
+    async def _run_site_check(self, site: dict) -> dict | None:
+        site_id = site["id"]
+        async with self._lock_for(site_id):
+            try:
+                result = await self._check_site(site["url"])
+                event = repository.record_check(site_id, result)
+                updated = repository.get_site(site_id)
+                if not updated:
+                    return None
+                if event:
+                    if event["type"] == "down":
+                        logger.warning(
+                            "Site DOWN: %s | error=%s",
+                            updated["url"],
+                            updated.get("last_error"),
+                            extra={"site_id": site_id, "incident_id": event["incident_id"]},
+                        )
+                        await notifications.notify_site_down(updated, event)
+                    elif event["type"] == "up":
+                        logger.info(
+                            "Site UP: %s | duration=%ss",
+                            updated["url"],
+                            event.get("duration_seconds"),
+                            extra={"site_id": site_id, "incident_id": event["incident_id"]},
+                        )
+                        await notifications.notify_site_up(updated, event)
+                interval = updated.get("check_interval_seconds") or self._default_interval
+                self._next_check[site_id] = time.time() + max(5, interval)
+                return updated
+            finally:
+                self._inflight.discard(site_id)
+
+    async def _run_ssl_check(self, site: dict) -> None:
+        site_id = site["id"]
+        try:
+            expires_at, error = await ssl_check.get_certificate_expiry(
+                site["url"], timeout=self._timeout
             )
-        except Exception as e:  # noqa: BLE001 - a single bad site must not stop the loop
-            return CheckResult(
-                url=url,
-                timestamp=start,
-                status="down",
-                http_code=None,
-                latency_ms=None,
-                error=f"{type(e).__name__}: {e}",
-            )
-
-    def _apply_result(self, result: CheckResult) -> None:
-        state = self._states.get(result.url)
-        if state is None:
-            return
-        previous_status = state.status
-        previous_check = state.last_check
-
-        state.status = result.status
-        state.last_check = result.timestamp
-        state.http_code = result.http_code
-        state.latency_ms = result.latency_ms
-        state.error = result.error
-        state.history.append(result)
-        if len(state.history) > 100:
-            state.history = state.history[-100:]
-
-        interval = state.check_interval or self._interval
-        state.next_check = result.timestamp + interval
-
-        if result.status == "down":
-            if previous_status != "down" or state.last_incident_time is None:
-                state.last_incident_time = result.timestamp
+            alerted = repository.update_ssl(site_id, expires_at, error)
+            updated = repository.get_site(site_id)
+            if not updated or not expires_at:
+                return
+            if expires_at > time.time():
+                return
+            if alerted:
+                return
+            if updated.get("last_status") != "down":
                 logger.warning(
-                    "Site DOWN: %s | error=%s | http_code=%s",
-                    result.url,
-                    result.error,
-                    result.http_code,
+                    "SSL certificate expired: %s",
+                    updated["url"],
+                    extra={"site_id": site_id},
                 )
-        elif previous_status == "down":
-            state.last_incident_time = previous_check or result.timestamp
-            logger.info(
-                "Site UP: %s | http_code=%s | latency=%sms",
-                result.url,
-                result.http_code,
-                result.latency_ms,
-            )
+                await notifications.notify_ssl_expired(updated)
+                repository.mark_ssl_alerted(site_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("SSL check error for site %s: %s", site_id, exc)
+        finally:
+            self._ssl_inflight.discard(site_id)
 
-    async def _run_checks(self):
-        cfg = app_config.load_config()
-        self._interval = cfg.get("check_interval_seconds", 60)
-        self._timeout = cfg.get("timeout_seconds", 10)
-        self._sync_sites(cfg.get("sites", []))
+    async def _tick(self) -> None:
+        settings = repository.get_settings()
+        self._default_interval = int(settings.get("check_interval_seconds", 60))
+        self._timeout = int(settings.get("timeout_seconds", 10))
+        ssl_interval = int(settings.get("ssl_check_interval_seconds", 21600))
+        sites = repository.list_sites()
+
+        alive_ids = {site["id"] for site in sites}
+        for site_id in list(self._next_check):
+            if site_id not in alive_ids:
+                self._next_check.pop(site_id, None)
+                self._locks.pop(site_id, None)
 
         now = time.time()
-        tasks = {
-            url: asyncio.create_task(self._check_site(url))
-            for url, state in self._states.items()
-            if state.next_check is None or now >= state.next_check
-        }
-        if not tasks:
-            return
+        tasks = []
+        for site in sites:
+            site_id = site["id"]
+            if site["paused"]:
+                self._next_check.pop(site_id, None)
+                continue
+            if site_id not in self._next_check:
+                self._next_check[site_id] = now
+            if now >= self._next_check[site_id] and site_id not in self._inflight:
+                self._inflight.add(site_id)
+                tasks.append(self._run_site_check(site))
 
-        urls = list(tasks)
-        results = await asyncio.gather(
-            *(tasks[url] for url in urls), return_exceptions=True
-        )
-        for url, result in zip(urls, results):
-            if isinstance(result, BaseException):
-                result = CheckResult(
-                    url=url,
-                    timestamp=time.time(),
-                    status="down",
-                    http_code=None,
-                    latency_ms=None,
-                    error=f"{type(result).__name__}: {result}",
-                )
-            self._apply_result(result)
+            checked_at = site.get("ssl_checked_at")
+            if (
+                site["url"].lower().startswith("https://")
+                and site_id not in self._ssl_inflight
+                and (not checked_at or now - checked_at >= ssl_interval)
+            ):
+                self._ssl_inflight.add(site_id)
+                tasks.append(self._run_ssl_check(site))
+
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        if now - self._last_cleanup > 86400:
+            self._last_cleanup = now
+            try:
+                repository.cleanup_old_data()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Cleanup error: %s", exc)
 
     def _next_wait(self) -> float:
-        deadlines = [
-            state.next_check
-            for state in self._states.values()
-            if state.next_check is not None
-        ]
-        if not deadlines:
-            return max(1.0, self._interval)
-        return max(1.0, min(deadlines) - time.time())
+        if not self._next_check:
+            return max(1.0, float(self._default_interval))
+        return max(1.0, min(self._next_check.values()) - time.time())
 
-    async def _loop(self):
+    async def _loop(self) -> None:
         while not self._stop_event.is_set():
             try:
-                await self._run_checks()
-            except Exception as e:  # noqa: BLE001 - keep the monitor alive
-                logger.error("Monitor loop error: %s", e)
+                await self._tick()
+            except Exception as exc:  # noqa: BLE001 - keep the monitor alive
+                logger.error("Monitor loop error: %s", exc)
+            self._last_loop = time.time()
             try:
                 await asyncio.wait_for(
                     self._wake_event.wait(), timeout=self._next_wait()
@@ -232,46 +199,40 @@ class Monitor:
                 pass
             self._wake_event.clear()
 
-    def start(self):
+    async def check_now(self, site_id: int) -> dict | None:
+        site = repository.get_site(site_id)
+        if not site:
+            return None
+        self._inflight.add(site_id)
+        self._next_check[site_id] = time.time()
+        updated = await self._run_site_check(site)
+        self._wake_event.set()
+        return updated
+
+    def site_changed(self, site_id: int) -> None:
+        self._next_check[site_id] = time.time()
+        self._wake_event.set()
+
+    def site_removed(self, site_id: int) -> None:
+        self._next_check.pop(site_id, None)
+        self._locks.pop(site_id, None)
+        self._wake_event.set()
+
+    def start(self) -> None:
         if self._task is None or self._task.done():
             self._stop_event.clear()
             self._wake_event.clear()
             self._task = asyncio.create_task(self._loop())
 
-    def stop(self):
+    def stop(self) -> None:
         self._stop_event.set()
         self._wake_event.set()
 
-    def wake(self):
+    def wake(self) -> None:
         self._wake_event.set()
 
-    def update_site(
-        self, old_url: str, new_url: str, name: str, interval: int | None
-    ):
-        state = self._states.pop(old_url, None)
-        if state is not None:
-            state.url = new_url
-            state.name = name
-            state.check_interval = interval
-            state.next_check = time.time()
-            for check in state.history:
-                check.url = new_url
-            self._states[new_url] = state
-        self._wake_event.set()
-
-    def update_settings(self, interval: int, timeout: int):
-        self._interval = interval
-        self._timeout = timeout
-        now = time.time()
-        for state in self._states.values():
-            state.next_check = now
-        self._wake_event.set()
-
-    def get_states(self) -> List[SiteState]:
-        return list(self._states.values())
-
-    def get_state(self, url: str) -> SiteState | None:
-        return self._states.get(url)
+    def last_loop(self) -> float | None:
+        return self._last_loop
 
 
 monitor = Monitor()
