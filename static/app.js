@@ -283,10 +283,6 @@ async function loadSites() {
     state.meta = data;
     $('#app-title').textContent = data.project_name || 'VibeMonitor';
     document.title = data.project_name || 'VibeMonitor';
-    const intervalBadge = $('#interval-badge');
-    intervalBadge.textContent = `Проверка: ${data.check_interval_seconds} сек`;
-    intervalBadge.classList.remove('hidden');
-    intervalBadge.classList.toggle('hidden', state.user?.role !== 'admin');
     $('#add-site-btn').classList.toggle('hidden', state.user?.role !== 'admin');
     $('#settings-btn').classList.toggle('hidden', state.user?.role !== 'admin');
     populateTagFilter();
@@ -358,7 +354,44 @@ function renderIncidents(incidents) {
     }).join('')}</div>`;
 }
 
-function renderDetail(site, stats, incidents) {
+function renderCheckLog(checks) {
+    const rows = checks.map((check) => {
+        const up = check.status === 'up';
+        return `
+            <tr>
+                <td>${escapeHtml(formatDate(check.timestamp))}</td>
+                <td><span class="history-status ${up ? 'up' : 'down'}"><span class="history-dot"></span>${up ? 'Доступен' : 'Недоступен'}</span></td>
+                <td>${check.http_code ?? '—'}</td>
+                <td>${escapeHtml(formatLatency(check.latency_ms))}</td>
+                <td class="${check.error ? 'history-error' : 'history-muted'}">${escapeHtml(check.error || '—')}</td>
+            </tr>`;
+    }).join('');
+    return `
+        <details class="check-log">
+            <summary>
+                <span class="check-log-chevron">›</span>
+                <span class="check-log-title">Лог запросов</span>
+                <span class="hint">последние ${checks.length}</span>
+            </summary>
+            <div class="check-log-body">
+                ${checks.length ? `
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>Время</th>
+                                <th>Статус</th>
+                                <th>HTTP</th>
+                                <th>Задержка</th>
+                                <th>Ошибка</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>` : '<p class="hint">Записей пока нет.</p>'}
+            </div>
+        </details>`;
+}
+
+function renderDetail(site, stats, incidents, checks) {
     const status = siteStatus(site);
     const admin = state.user?.role === 'admin';
     const body = $('#modal-body');
@@ -397,6 +430,7 @@ function renderDetail(site, stats, incidents) {
         <div class="chart-block">
             <h3>Инциденты</h3>
             ${renderIncidents(incidents)}
+            ${renderCheckLog(checks)}
         </div>`;
     renderCharts(site, stats, incidents);
 }
@@ -510,7 +544,10 @@ async function loadDetail() {
     const siteId = state.detailSiteId;
     if (!siteId) return;
     try {
-        const data = await api(`/api/sites/${siteId}/stats?range=${encodeURIComponent(state.detailRange)}`);
+        const [data, checksData] = await Promise.all([
+            api(`/api/sites/${siteId}/stats?range=${encodeURIComponent(state.detailRange)}`),
+            api(`/api/sites/${siteId}/checks?limit=100`)
+        ]);
         if (state.detailSiteId !== siteId) return;
         state.detailSite = data.site;
         state.detailStats = data.stats;
@@ -518,7 +555,7 @@ async function loadDetail() {
         const site = data.site;
         $('#modal-title').textContent = site.name || site.url;
         $('#edit-site-btn').classList.toggle('hidden', state.user?.role !== 'admin');
-        renderDetail(site, data.stats, data.incidents);
+        renderDetail(site, data.stats, data.incidents, checksData.checks);
     } catch (error) {
         toast(error.message, 'error');
     }
@@ -841,9 +878,6 @@ function bindEvents() {
 
     $('#theme-btn').addEventListener('click', toggleTheme);
     $('#settings-btn').addEventListener('click', openSettings);
-    $('#interval-badge').addEventListener('click', () => {
-        if (state.user?.role === 'admin') openSettings();
-    });
     $('#add-site-btn').addEventListener('click', () => openAddSite());
     $('#confirm-add-btn').addEventListener('click', saveSite);
     $('#save-settings-btn').addEventListener('click', saveSettings);

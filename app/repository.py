@@ -476,6 +476,15 @@ def update_incident_note(incident_id: int, note: str) -> dict | None:
     return dict(row) if row else None
 
 
+def list_checks(site_id: int, limit: int = 100) -> list[dict]:
+    rows = db.query_all(
+        "SELECT timestamp, status, http_code, latency_ms, error "
+        "FROM checks WHERE site_id=? ORDER BY timestamp DESC LIMIT ?",
+        (site_id, limit),
+    )
+    return [dict(row) for row in rows]
+
+
 def site_stats(site_id: int, range_key: str = "24h") -> dict:
     duration, bucket_seconds = RANGES.get(range_key, RANGES["24h"])
     since = time.time() - duration

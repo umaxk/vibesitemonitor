@@ -319,6 +319,18 @@ async def pause_site(request: Request, site_id: int, payload: PauseRequest):
     return site
 
 
+@app.get("/api/sites/{site_id}/checks")
+async def site_checks(request: Request, site_id: int, limit: int = 100):
+    require_user(request)
+    if not repository.get_site(site_id):
+        raise HTTPException(status_code=404, detail="Site not found")
+    return {
+        "checks": repository.list_checks(
+            site_id, max(1, min(limit, 200))
+        )
+    }
+
+
 @app.get("/api/sites/{site_id}/stats")
 async def site_stats(request: Request, site_id: int, range: str = "24h"):
     require_user(request)
