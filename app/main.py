@@ -1,16 +1,24 @@
-import asyncio
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field
+from pydantic import AnyHttpUrl, BaseModel, Field
 
 from app import auth, config as app_config
 from app.monitor import monitor
 
-templates = Jinja2Templates(directory="app/templates")
+BASE_DIR = Path(__file__).resolve().parent.parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
+
+COOKIE_SECURE = os.environ.get("MONITOR_COOKIE_SECURE", "").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 
 @asynccontextmanager
@@ -22,17 +30,34 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    if request.url.scheme == "https":
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    return response
+
+
+class LoginRequest(BaseModel):
+    password: str = Field(..., max_length=256)
 
 
 class SiteCreate(BaseModel):
-    url: str = Field(..., pattern=r"^https?://")
-    name: str = ""
+    url: AnyHttpUrl
+    name: str = Field(default="", max_length=200)
     check_interval_seconds: int | None = Field(None, ge=5, le=3600)
 
 
 class SettingsUpdate(BaseModel):
-    project_name: str = Field(default="VibeMonitor", min_length=1, max_length=100)
+    project_name: str = Field(..., min_length=1, max_length=100)
     check_interval_seconds: int = Field(..., ge=5, le=3600)
     timeout_seconds: int = Field(..., ge=1, le=60)
     incident_hide_hours: int = Field(..., ge=1, le=720)
@@ -43,27 +68,36 @@ async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
+
+
 @app.post("/api/login")
-async def login(request: Request):
-    data = await request.json()
-    password = data.get("password", "")
-    if not auth.verify_password(password):
+async def login(request: Request, payload: LoginRequest):
+    client_ip = request.client.host if request.client else "unknown"
+    if not auth.login_allowed(client_ip):
+        raise HTTPException(status_code=429, detail="Too many attempts")
+    if not auth.verify_password(payload.password):
         raise HTTPException(status_code=401, detail="Invalid password")
+    auth.clear_login_attempts(client_ip)
     token = auth.create_session_token()
-    resp = Response(content='{"ok": true}', media_type="application/json")
+    resp = JSONResponse({"ok": True})
     resp.set_cookie(
         key=auth.SESSION_COOKIE,
         value=token,
         httponly=True,
         samesite="lax",
-        max_age=86400 * 7,
+        secure=COOKIE_SECURE or request.url.scheme == "https",
+        max_age=auth.SESSION_TTL_SECONDS,
     )
     return resp
 
 
 @app.post("/api/logout")
-async def logout():
-    resp = Response(content='{"ok": true}', media_type="application/json")
+async def logout(request: Request):
+    auth.revoke_session_token(request.cookies.get(auth.SESSION_COOKIE))
+    resp = JSONResponse({"ok": True})
     resp.delete_cookie(auth.SESSION_COOKIE)
     return resp
 
@@ -77,7 +111,6 @@ def require_auth(request: Request):
 async def get_sites(request: Request):
     require_auth(request)
     cfg = app_config.load_config()
-    states = monitor.get_states()
     result = []
     for site in cfg.get("sites", []):
         state = monitor.get_state(site["url"])
@@ -108,14 +141,16 @@ async def add_site(request: Request, site: SiteCreate):
     require_auth(request)
     cfg = app_config.load_config()
     sites = cfg.get("sites", [])
-    if any(s["url"] == site.url for s in sites):
+    url = str(site.url)
+    if any(s["url"].rstrip("/") == url.rstrip("/") for s in sites):
         raise HTTPException(status_code=409, detail="Site already exists")
-    site_data = {"url": site.url, "name": site.name or site.url}
+    site_data = {"url": url, "name": site.name or url}
     if site.check_interval_seconds:
         site_data["check_interval_seconds"] = site.check_interval_seconds
     sites.append(site_data)
     cfg["sites"] = sites
     app_config.save_config(cfg)
+    monitor.wake()
     return {"ok": True}
 
 
@@ -126,6 +161,7 @@ async def delete_site(request: Request, url: str):
     sites = cfg.get("sites", [])
     cfg["sites"] = [s for s in sites if s["url"] != url]
     app_config.save_config(cfg)
+    monitor.wake()
     return {"ok": True}
 
 
