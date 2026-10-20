@@ -23,6 +23,14 @@ const API = {
         });
         return res.ok;
     },
+    async updateSite(oldUrl, url, name, interval) {
+        const res = await fetch(`/api/sites/${encodeURIComponent(oldUrl)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, name, check_interval_seconds: interval || null })
+        });
+        return res.ok;
+    },
     async deleteSite(url) {
         const res = await fetch(`/api/sites/${encodeURIComponent(url)}`, {
             method: 'DELETE'
@@ -53,6 +61,7 @@ let sitesData = [];
 let refreshInterval = null;
 let incidentHideHours = 12;
 let currentDetailUrl = null;
+let editingSiteUrl = null;
 
 function showLogin() {
     stopRefresh();
@@ -118,6 +127,36 @@ async function openSettingsModal() {
     } catch {
         showLogin();
     }
+}
+
+function openAddModal() {
+    editingSiteUrl = null;
+    document.getElementById('add-modal-title').textContent = 'Добавить сайт';
+    document.getElementById('confirm-add-btn').textContent = 'Добавить';
+    document.getElementById('new-site-url').value = '';
+    document.getElementById('new-site-name').value = '';
+    document.getElementById('new-site-interval').value = '';
+    document.getElementById('add-modal').classList.remove('hidden');
+    document.getElementById('new-site-url').focus();
+}
+
+function openEditModal(url) {
+    const site = sitesData.find(item => item.url === url);
+    if (!site) return;
+    editingSiteUrl = site.url;
+    document.getElementById('add-modal-title').textContent = 'Редактировать сайт';
+    document.getElementById('confirm-add-btn').textContent = 'Сохранить';
+    document.getElementById('new-site-url').value = site.url;
+    document.getElementById('new-site-name').value =
+        site.name && site.name !== site.url ? site.name : '';
+    document.getElementById('new-site-interval').value = site.check_interval_seconds || '';
+    document.getElementById('add-modal').classList.remove('hidden');
+    document.getElementById('new-site-url').focus();
+}
+
+function closeAddModal() {
+    editingSiteUrl = null;
+    document.getElementById('add-modal').classList.add('hidden');
 }
 
 function normalizeStatus(status) {
@@ -212,7 +251,10 @@ async function openDetail(url) {
             </table>`;
 
     body.innerHTML = `${content}
-        <button class="delete-btn" data-action="delete-site">Удалить сайт</button>`;
+        <div class="site-actions">
+            <button class="btn-primary" data-action="edit-site">Редактировать</button>
+            <button class="delete-btn" data-action="delete-site">Удалить сайт</button>
+        </div>`;
     modal.classList.remove('hidden');
 }
 
@@ -251,8 +293,12 @@ document.getElementById('sites-grid').addEventListener('click', (event) => {
 });
 
 document.getElementById('modal-body').addEventListener('click', (event) => {
-    if (!event.target.closest('[data-action="delete-site"]')) return;
-    if (currentDetailUrl) deleteSite(currentDetailUrl);
+    if (!currentDetailUrl) return;
+    if (event.target.closest('[data-action="edit-site"]')) {
+        openEditModal(currentDetailUrl);
+    } else if (event.target.closest('[data-action="delete-site"]')) {
+        deleteSite(currentDetailUrl);
+    }
 });
 
 document.getElementById('login-btn').addEventListener('click', async () => {
@@ -284,29 +330,27 @@ document.getElementById('logout-btn').addEventListener('click', async () => {
 
 document.getElementById('interval-badge').addEventListener('click', openSettingsModal);
 
-document.getElementById('add-site-btn').addEventListener('click', () => {
-    document.getElementById('add-modal').classList.remove('hidden');
-    document.getElementById('new-site-url').focus();
-});
+document.getElementById('add-site-btn').addEventListener('click', openAddModal);
 
-document.getElementById('add-modal-close').addEventListener('click', () => {
-    document.getElementById('add-modal').classList.add('hidden');
-});
+document.getElementById('add-modal-close').addEventListener('click', closeAddModal);
 
 document.getElementById('confirm-add-btn').addEventListener('click', async () => {
     const url = document.getElementById('new-site-url').value.trim();
     const name = document.getElementById('new-site-name').value.trim();
     const interval = document.getElementById('new-site-interval').value;
     if (!url) return;
-    const ok = await API.addSite(url, name, interval ? parseInt(interval) : null);
+    const isEditing = editingSiteUrl !== null;
+    const ok = isEditing
+        ? await API.updateSite(editingSiteUrl, url, name, interval ? parseInt(interval) : null)
+        : await API.addSite(url, name, interval ? parseInt(interval) : null);
     if (ok) {
-        document.getElementById('new-site-url').value = '';
-        document.getElementById('new-site-name').value = '';
-        document.getElementById('new-site-interval').value = '';
-        document.getElementById('add-modal').classList.add('hidden');
+        closeAddModal();
+        if (isEditing) closeModal();
         refreshSites();
     } else {
-        alert('Не удалось добавить сайт: проверьте URL или такой сайт уже есть');
+        alert(isEditing
+            ? 'Не удалось сохранить сайт: проверьте URL или такой сайт уже есть'
+            : 'Не удалось добавить сайт: проверьте URL или такой сайт уже есть');
     }
 });
 
