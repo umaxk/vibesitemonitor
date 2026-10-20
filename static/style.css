@@ -408,6 +408,11 @@ main {
     padding: 1rem;
 }
 
+#add-modal,
+#settings-modal {
+    z-index: 110;
+}
+
 .modal-content {
     background: #1e293b;
     border-radius: 12px;

@@ -60,8 +60,10 @@ const API = {
 let sitesData = [];
 let refreshInterval = null;
 let incidentHideHours = 12;
+let defaultCheckInterval = 60;
 let currentDetailUrl = null;
 let editingSiteUrl = null;
+let editingDefaultInterval = false;
 
 function showLogin() {
     stopRefresh();
@@ -108,6 +110,7 @@ async function loadSites() {
     const data = await API.getSites();
     sitesData = data.sites;
     incidentHideHours = data.incident_hide_hours;
+    defaultCheckInterval = data.check_interval_seconds;
     renderSites();
     document.getElementById('app-title').textContent = data.project_name;
     document.getElementById('login-title').textContent = data.project_name;
@@ -131,6 +134,7 @@ async function openSettingsModal() {
 
 function openAddModal() {
     editingSiteUrl = null;
+    editingDefaultInterval = false;
     document.getElementById('add-modal-title').textContent = 'Добавить сайт';
     document.getElementById('confirm-add-btn').textContent = 'Добавить';
     document.getElementById('new-site-url').value = '';
@@ -144,18 +148,20 @@ function openEditModal(url) {
     const site = sitesData.find(item => item.url === url);
     if (!site) return;
     editingSiteUrl = site.url;
+    editingDefaultInterval = site.check_interval_seconds == null;
     document.getElementById('add-modal-title').textContent = 'Редактировать сайт';
     document.getElementById('confirm-add-btn').textContent = 'Сохранить';
     document.getElementById('new-site-url').value = site.url;
-    document.getElementById('new-site-name').value =
-        site.name && site.name !== site.url ? site.name : '';
-    document.getElementById('new-site-interval').value = site.check_interval_seconds || '';
+    document.getElementById('new-site-name').value = site.name || '';
+    document.getElementById('new-site-interval').value =
+        site.check_interval_seconds ?? defaultCheckInterval;
     document.getElementById('add-modal').classList.remove('hidden');
     document.getElementById('new-site-url').focus();
 }
 
 function closeAddModal() {
     editingSiteUrl = null;
+    editingDefaultInterval = false;
     document.getElementById('add-modal').classList.add('hidden');
 }
 
@@ -340,9 +346,13 @@ document.getElementById('confirm-add-btn').addEventListener('click', async () =>
     const interval = document.getElementById('new-site-interval').value;
     if (!url) return;
     const isEditing = editingSiteUrl !== null;
+    let intervalValue = interval ? parseInt(interval) : null;
+    if (isEditing && editingDefaultInterval && intervalValue === defaultCheckInterval) {
+        intervalValue = null;
+    }
     const ok = isEditing
-        ? await API.updateSite(editingSiteUrl, url, name, interval ? parseInt(interval) : null)
-        : await API.addSite(url, name, interval ? parseInt(interval) : null);
+        ? await API.updateSite(editingSiteUrl, url, name, intervalValue)
+        : await API.addSite(url, name, intervalValue);
     if (ok) {
         closeAddModal();
         if (isEditing) closeModal();
