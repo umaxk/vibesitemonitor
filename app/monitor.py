@@ -4,7 +4,7 @@ import time
 
 import httpx
 
-from app import logging_config, notifications, repository, ssl_check
+from app import logging_config, net_guard, notifications, repository, ssl_check
 
 logging_config.setup()
 logger = logging.getLogger("monitor")
@@ -35,6 +35,18 @@ class Monitor:
 
     async def _check_site(self, url: str) -> dict:
         start = time.time()
+        down = {
+            "timestamp": start,
+            "status": "down",
+            "http_code": None,
+            "latency_ms": None,
+            "error": None,
+        }
+        try:
+            await net_guard.check_url_async(url)
+        except net_guard.DisallowedHostError as exc:
+            down["error"] = str(exc)
+            return down
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout,
@@ -110,6 +122,11 @@ class Monitor:
     async def _run_ssl_check(self, site: dict) -> None:
         site_id = site["id"]
         try:
+            try:
+                await net_guard.check_url_async(site["url"])
+            except net_guard.DisallowedHostError as exc:
+                logger.warning("SSL check skipped for site %s: %s", site_id, exc)
+                return
             expires_at, error = await ssl_check.get_certificate_expiry(
                 site["url"], timeout=self._timeout
             )

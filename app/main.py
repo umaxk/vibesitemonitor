@@ -15,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import AnyHttpUrl, BaseModel, Field
 from sqlite3 import IntegrityError
 
-from app import auth, logging_config, notifications, repository
+from app import auth, logging_config, net_guard, notifications, repository
 from app.monitor import monitor
 
 logging_config.setup()
@@ -117,6 +117,9 @@ class SiteBase(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=10)
     public: bool = False
 
+    def clean_url(self) -> str:
+        return str(self.url)
+
 
 class SettingsUpdate(BaseModel):
     project_name: str = Field(..., min_length=1, max_length=100)
@@ -173,6 +176,18 @@ def require_admin(request: Request) -> dict:
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
+
+
+def _guard_site_url(site: SiteBase) -> str:
+    url = site.clean_url()
+    try:
+        net_guard.check_url(url)
+    except net_guard.DisallowedHostError:
+        raise HTTPException(
+            status_code=400,
+            detail="URL points to a private or reserved address",
+        ) from None
+    return url
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -273,7 +288,7 @@ async def get_sites(request: Request):
 @app.post("/api/sites")
 async def add_site(request: Request, site: SiteBase):
     require_admin(request)
-    url = str(site.url)
+    url = _guard_site_url(site)
     if repository.find_site_by_url(url):
         raise HTTPException(status_code=409, detail="Site already exists")
     try:
@@ -305,7 +320,7 @@ async def update_site(request: Request, site_id: int, site: SiteBase):
     existing = repository.get_site(site_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Site not found")
-    url = str(site.url)
+    url = _guard_site_url(site)
     duplicate = repository.find_site_by_url(url)
     if duplicate and duplicate["id"] != site_id:
         raise HTTPException(status_code=409, detail="Site already exists")
