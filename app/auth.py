@@ -20,11 +20,13 @@ MAX_SESSIONS_PER_USER = 5
 LOGIN_WINDOW_SECONDS = 60
 LOGIN_MAX_ATTEMPTS = 10
 LOGIN_MAX_ATTEMPTS_PER_USER = 5
+LOGIN_CLEANUP_INTERVAL_SECONDS = 600
 
 _hasher = PasswordHasher()
 _login_attempts: dict[str, list[float]] = {}
 _failed_logins_by_user: dict[str, list[float]] = {}
 _dummy_hash_value: str | None = None
+_last_attempt_cleanup = 0.0
 
 
 def hash_password(password: str) -> str:
@@ -82,8 +84,27 @@ def current_user(request: Request):
     return get_session_user(request.cookies.get(SESSION_COOKIE))
 
 
+def _cleanup_login_state(now: float) -> None:
+    global _last_attempt_cleanup
+    if now - _last_attempt_cleanup < LOGIN_CLEANUP_INTERVAL_SECONDS:
+        return
+    _last_attempt_cleanup = now
+    for store in (_login_attempts, _failed_logins_by_user):
+        for key in list(store):
+            recent = [
+                ts
+                for ts in store[key]
+                if now - ts < LOGIN_WINDOW_SECONDS
+            ]
+            if recent:
+                store[key] = recent
+            else:
+                store.pop(key, None)
+
+
 def login_allowed(client_ip: str, username: str | None = None) -> bool:
     now = time.time()
+    _cleanup_login_state(now)
     ip_attempts = [
         ts
         for ts in _login_attempts.get(client_ip, [])
