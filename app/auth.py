@@ -23,6 +23,7 @@ LOGIN_MAX_ATTEMPTS_PER_USER = 5
 _hasher = PasswordHasher()
 _login_attempts: dict[str, list[float]] = {}
 _failed_logins_by_user: dict[str, list[float]] = {}
+_dummy_hash_value: str | None = None
 
 
 def hash_password(password: str) -> str:
@@ -36,11 +37,17 @@ def verify_password(password_hash: str, password: str) -> bool:
         return False
 
 
+def _dummy_hash() -> str:
+    global _dummy_hash_value
+    if _dummy_hash_value is None:
+        _dummy_hash_value = _hasher.hash(secrets.token_urlsafe(16))
+    return _dummy_hash_value
+
+
 def authenticate(username: str, password: str):
     user = repository.get_user_by_username(username)
-    if not user:
-        return None
-    if not verify_password(user["password_hash"], password):
+    password_hash = user["password_hash"] if user else _dummy_hash()
+    if not verify_password(password_hash, password):
         return None
     return user
 
