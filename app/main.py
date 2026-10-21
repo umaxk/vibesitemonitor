@@ -4,6 +4,7 @@ import re
 import secrets
 import time
 import uuid
+from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
@@ -32,6 +33,30 @@ COOKIE_SECURE = os.environ.get("MONITOR_COOKIE_SECURE", "true").lower() in {
 
 CSRF_COOKIE = "csrf_token"
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+API_WINDOW_SECONDS = 60
+API_MAX_REQUESTS = 120
+API_CLEANUP_INTERVAL_SECONDS = 600
+_api_requests: dict[str, deque[float]] = {}
+_last_api_cleanup = 0.0
+
+
+def _api_rate_limited(client_ip: str) -> bool:
+    global _last_api_cleanup
+    now = time.time()
+    bucket = _api_requests.setdefault(client_ip, deque())
+    while bucket and now - bucket[0] >= API_WINDOW_SECONDS:
+        bucket.popleft()
+    if len(bucket) >= API_MAX_REQUESTS:
+        _api_requests[client_ip] = bucket
+        return True
+    bucket.append(now)
+    if now - _last_api_cleanup >= API_CLEANUP_INTERVAL_SECONDS:
+        _last_api_cleanup = now
+        for ip in list(_api_requests):
+            if not _api_requests[ip] or now - _api_requests[ip][-1] >= API_WINDOW_SECONDS:
+                _api_requests.pop(ip, None)
+    return False
 
 
 def _csrf_ok(request: Request) -> bool:
@@ -74,7 +99,13 @@ async def request_middleware(request: Request, call_next):
     request_id = uuid.uuid4().hex[:12]
     start = time.perf_counter()
     csrf_failed = request.method in UNSAFE_METHODS and not _csrf_ok(request)
-    if csrf_failed:
+    rate_limited = (
+        request.url.path.startswith("/api/")
+        and _api_rate_limited(request.client.host if request.client else "unknown")
+    )
+    if rate_limited:
+        response = JSONResponse({"detail": "Too many requests"}, status_code=429)
+    elif csrf_failed:
         response = JSONResponse({"detail": "CSRF check failed"}, status_code=403)
     else:
         response = await call_next(request)
