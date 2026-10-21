@@ -183,12 +183,15 @@ async def healthz():
 @app.post("/api/login")
 async def login(request: Request, payload: LoginRequest):
     client_ip = request.client.host if request.client else "unknown"
-    if not auth.login_allowed(client_ip):
+    username_key = payload.username.strip().lower()
+    if not auth.login_allowed(client_ip, username_key):
         raise HTTPException(status_code=429, detail="Too many attempts")
     user = auth.authenticate(payload.username, payload.password)
     if not user:
+        auth.record_failed_login(username_key)
         raise HTTPException(status_code=401, detail="Invalid credentials")
     auth.clear_login_attempts(client_ip)
+    auth.clear_failed_logins(username_key)
     token = auth.create_session(user["id"])
     resp = JSONResponse(
         {"ok": True, "username": user["username"], "role": user["role"]}

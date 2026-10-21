@@ -18,9 +18,11 @@ SESSION_TTL_SECONDS = int(
 )
 LOGIN_WINDOW_SECONDS = 60
 LOGIN_MAX_ATTEMPTS = 10
+LOGIN_MAX_ATTEMPTS_PER_USER = 5
 
 _hasher = PasswordHasher()
 _login_attempts: dict[str, list[float]] = {}
+_failed_logins_by_user: dict[str, list[float]] = {}
 
 
 def hash_password(password: str) -> str:
@@ -71,19 +73,43 @@ def current_user(request: Request):
     return get_session_user(request.cookies.get(SESSION_COOKIE))
 
 
-def login_allowed(client_ip: str) -> bool:
+def login_allowed(client_ip: str, username: str | None = None) -> bool:
     now = time.time()
-    attempts = [
+    ip_attempts = [
         ts
         for ts in _login_attempts.get(client_ip, [])
         if now - ts < LOGIN_WINDOW_SECONDS
     ]
-    if len(attempts) >= LOGIN_MAX_ATTEMPTS:
-        _login_attempts[client_ip] = attempts
+    if len(ip_attempts) >= LOGIN_MAX_ATTEMPTS:
+        _login_attempts[client_ip] = ip_attempts
         return False
-    attempts.append(now)
-    _login_attempts[client_ip] = attempts
+    ip_attempts.append(now)
+    _login_attempts[client_ip] = ip_attempts
+    if username:
+        user_attempts = [
+            ts
+            for ts in _failed_logins_by_user.get(username, [])
+            if now - ts < LOGIN_WINDOW_SECONDS
+        ]
+        if len(user_attempts) >= LOGIN_MAX_ATTEMPTS_PER_USER:
+            _failed_logins_by_user[username] = user_attempts
+            return False
     return True
+
+
+def record_failed_login(username: str) -> None:
+    now = time.time()
+    attempts = [
+        ts
+        for ts in _failed_logins_by_user.get(username, [])
+        if now - ts < LOGIN_WINDOW_SECONDS
+    ]
+    attempts.append(now)
+    _failed_logins_by_user[username] = attempts
+
+
+def clear_failed_logins(username: str) -> None:
+    _failed_logins_by_user.pop(username, None)
 
 
 def clear_login_attempts(client_ip: str) -> None:
