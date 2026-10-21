@@ -3,14 +3,14 @@ services:
     build: .
     container_name: site-monitor
     ports:
-      - "1485:1485"
+      - "127.0.0.1:1485:1485"
     environment:
       - MONITOR_PASSWORD=${MONITOR_PASSWORD:?Set MONITOR_PASSWORD in .env}
       - MONITOR_ADMIN_USERNAME=${MONITOR_ADMIN_USERNAME:-admin}
       - MONITOR_ADMIN_PASSWORD=${MONITOR_ADMIN_PASSWORD:-}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - MONITOR_SESSION_TTL_SECONDS=${MONITOR_SESSION_TTL_SECONDS:-604800}
-      - MONITOR_COOKIE_SECURE=${MONITOR_COOKIE_SECURE:-false}
+      - MONITOR_COOKIE_SECURE=${MONITOR_COOKIE_SECURE:-true}
       - LOG_FORMAT=${LOG_FORMAT:-text}
     volumes:
       - ./data:/app/data

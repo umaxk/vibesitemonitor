@@ -24,7 +24,7 @@ logger = logging.getLogger("http")
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
 
-COOKIE_SECURE = os.environ.get("MONITOR_COOKIE_SECURE", "").lower() in {
+COOKIE_SECURE = os.environ.get("MONITOR_COOKIE_SECURE", "true").lower() in {
     "1",
     "true",
     "yes",
