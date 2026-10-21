@@ -1,7 +1,7 @@
 import asyncio
 import ipaddress
 import socket
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 BLOCKED_NETWORKS = {
     4: [
@@ -67,3 +67,14 @@ def check_url(url: str) -> None:
 
 async def check_url_async(url: str) -> None:
     await asyncio.to_thread(check_url, url)
+
+
+def strip_url_credentials(url: str) -> str:
+    parts = urlsplit(str(url))
+    if parts.username is None and parts.password is None:
+        return str(url)
+    host = parts.hostname or ""
+    netloc = f"[{host}]" if ":" in host else host
+    if parts.port:
+        netloc += f":{parts.port}"
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))

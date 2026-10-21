@@ -179,7 +179,7 @@ def require_admin(request: Request) -> dict:
 
 
 def _guard_site_url(site: SiteBase) -> str:
-    url = site.clean_url()
+    url = net_guard.strip_url_credentials(site.clean_url())
     try:
         net_guard.check_url(url)
     except net_guard.DisallowedHostError:

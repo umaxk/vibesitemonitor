@@ -34,6 +34,7 @@ class Monitor:
         return resp.status_code
 
     async def _check_site(self, url: str) -> dict:
+        url = net_guard.strip_url_credentials(url)
         start = time.time()
         down = {
             "timestamp": start,
