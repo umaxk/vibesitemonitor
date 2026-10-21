@@ -215,14 +215,7 @@ async def healthz():
     max_gap = max(120, int(settings.get("check_interval_seconds", 60)) * 3)
     monitor_ok = last_loop is not None and time.time() - last_loop <= max_gap
     healthy = db_ok and monitor_ok
-    return JSONResponse(
-        {
-            "status": "ok" if healthy else "degraded",
-            "db": db_ok,
-            "monitor": monitor_ok,
-        },
-        status_code=200 if healthy else 503,
-    )
+    return JSONResponse({}, status_code=200 if healthy else 503)
 
 
 @app.post("/api/login")
