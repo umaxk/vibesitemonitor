@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -29,6 +30,30 @@ COOKIE_SECURE = os.environ.get("MONITOR_COOKIE_SECURE", "").lower() in {
     "yes",
 }
 
+CSRF_COOKIE = "csrf_token"
+UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _csrf_ok(request: Request) -> bool:
+    header_token = request.headers.get("x-csrf-token", "")
+    cookie_token = request.cookies.get(CSRF_COOKIE, "")
+    if not header_token or not cookie_token:
+        return False
+    return secrets.compare_digest(header_token, cookie_token)
+
+
+def _set_csrf_cookie(request: Request, response: Response) -> None:
+    if request.cookies.get(CSRF_COOKIE):
+        return
+    response.set_cookie(
+        key=CSRF_COOKIE,
+        value=secrets.token_urlsafe(32),
+        httponly=False,
+        samesite="lax",
+        secure=COOKIE_SECURE or request.url.scheme == "https",
+        max_age=auth.SESSION_TTL_SECONDS,
+    )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -48,7 +73,12 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 async def request_middleware(request: Request, call_next):
     request_id = uuid.uuid4().hex[:12]
     start = time.perf_counter()
-    response = await call_next(request)
+    csrf_failed = request.method in UNSAFE_METHODS and not _csrf_ok(request)
+    if csrf_failed:
+        response = JSONResponse({"detail": "CSRF check failed"}, status_code=403)
+    else:
+        response = await call_next(request)
+    _set_csrf_cookie(request, response)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "same-origin")

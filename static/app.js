@@ -34,15 +34,37 @@ function safeUrl(value) {
     return /^https?:\/\//i.test(url) ? url : '#';
 }
 
+function csrfToken() {
+    const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : '';
+}
+
 async function api(path, options = {}) {
     const opts = { credentials: 'same-origin', ...options };
     if (opts.body && typeof opts.body !== 'string') {
         opts.body = JSON.stringify(opts.body);
     }
+    const method = (opts.method || 'GET').toUpperCase();
+    opts.headers = { ...(opts.headers || {}) };
     if (opts.body) {
-        opts.headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+        opts.headers['Content-Type'] = opts.headers['Content-Type'] || 'application/json';
     }
-    const response = await fetch(path, opts);
+    if (method !== 'GET' && method !== 'HEAD') {
+        opts.headers['X-CSRF-Token'] = csrfToken();
+    }
+    let response = await fetch(path, opts);
+    if (response.status === 403 && method !== 'GET' && method !== 'HEAD') {
+        let probe = null;
+        try {
+            probe = await response.clone().json();
+        } catch (error) {
+            probe = null;
+        }
+        if (probe && probe.detail === 'CSRF check failed') {
+            opts.headers['X-CSRF-Token'] = csrfToken();
+            response = await fetch(path, opts);
+        }
+    }
     let data = null;
     try {
         data = await response.json();
