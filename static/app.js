@@ -898,6 +898,16 @@ function bindEvents() {
         showLogin();
     });
 
+    $('#logout-all-btn').addEventListener('click', async () => {
+        if (!confirm('Завершить все активные сессии, включая текущую?')) return;
+        try {
+            await api('/api/logout-all', { method: 'POST' });
+        } catch (error) {
+            // ignore
+        }
+        showLogin();
+    });
+
     $('#theme-btn').addEventListener('click', toggleTheme);
     $('#settings-btn').addEventListener('click', openSettings);
     $('#add-site-btn').addEventListener('click', () => openAddSite());

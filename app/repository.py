@@ -610,6 +610,16 @@ def delete_user_sessions(user_id: int) -> None:
         conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
 
 
+def trim_user_sessions(user_id: int, keep: int) -> None:
+    with db.transaction() as conn:
+        conn.execute(
+            "DELETE FROM sessions WHERE user_id=? AND token_hash NOT IN "
+            "(SELECT token_hash FROM sessions WHERE user_id=? "
+            "ORDER BY created_at DESC, expires_at DESC LIMIT ?)",
+            (user_id, user_id, keep),
+        )
+
+
 def create_session(token_hash: str, user_id: int, expires_at: float) -> None:
     with db.transaction() as conn:
         conn.execute(

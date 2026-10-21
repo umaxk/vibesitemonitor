@@ -16,6 +16,7 @@ SESSION_COOKIE = "session"
 SESSION_TTL_SECONDS = int(
     os.environ.get("MONITOR_SESSION_TTL_SECONDS", str(7 * 24 * 3600))
 )
+MAX_SESSIONS_PER_USER = 5
 LOGIN_WINDOW_SECONDS = 60
 LOGIN_MAX_ATTEMPTS = 10
 LOGIN_MAX_ATTEMPTS_PER_USER = 5
@@ -61,6 +62,7 @@ def create_session(user_id: int) -> str:
     repository.create_session(
         _token_hash(token), user_id, time.time() + SESSION_TTL_SECONDS
     )
+    repository.trim_user_sessions(user_id, MAX_SESSIONS_PER_USER)
     return token
 
 

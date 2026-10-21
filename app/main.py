@@ -253,6 +253,15 @@ async def logout(request: Request):
     return resp
 
 
+@app.post("/api/logout-all")
+async def logout_all(request: Request):
+    user = require_user(request)
+    repository.delete_user_sessions(user["user_id"])
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(auth.SESSION_COOKIE)
+    return resp
+
+
 @app.get("/api/me")
 async def me(request: Request):
     user = require_user(request)
