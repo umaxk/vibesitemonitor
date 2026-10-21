@@ -521,7 +521,7 @@ async def add_user(request: Request, payload: UserCreate):
 
 @app.put("/api/users/{user_id}")
 async def edit_user(request: Request, user_id: int, payload: UserUpdate):
-    admin = require_admin(request)
+    require_admin(request)
     user = repository.get_user(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -535,8 +535,7 @@ async def edit_user(request: Request, user_id: int, payload: UserUpdate):
         repository.update_user_password(
             user_id, auth.hash_password(payload.password)
         )
-        if user_id != admin["user_id"]:
-            repository.delete_user_sessions(user_id)
+        repository.delete_user_sessions(user_id)
     updated = repository.get_user(user_id)
     return {
         "id": updated["id"],
