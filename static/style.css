@@ -1516,8 +1516,4 @@ body.light .modal {
     .form-row {
         grid-template-columns: 1fr;
     }
-
-    .settings-btn .btn-label {
-        display: none;
-    }
 }
