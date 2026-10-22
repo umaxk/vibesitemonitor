@@ -7,6 +7,10 @@ ENV PYTHONUNBUFFERED=1 \
     MONITOR_LOG_PATH=/app/data/monitor.log \
     MONITOR_DB_PATH=/app/data/monitor.db
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -17,7 +21,10 @@ RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin monitor \
     && mkdir -p /app/data \
     && chown -R monitor:monitor /app
 
-USER monitor
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 EXPOSE 1485
 
