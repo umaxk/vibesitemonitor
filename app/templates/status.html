@@ -12,23 +12,24 @@
         <div class="status-header">
             <h1 id="status-title">Статус сервисов</h1>
             <p id="status-description" class="status-description"></p>
-            <div id="status-meta" class="status-meta">Загрузка...</div>
+            <div id="status-meta" class="status-meta"></div>
         </div>
 
-        <div id="overall-banner" class="overall-banner">Загрузка...</div>
+        <div id="overall-banner" class="overall-banner"></div>
 
         <section id="public-grid" class="public-grid"></section>
 
         <section class="public-incidents">
-            <h2>Последние инциденты</h2>
+            <h2 data-i18n-tsp="incidentsTitle">Последние инциденты</h2>
             <div id="public-incidents"></div>
         </section>
 
-        <div class="status-footer">
+        <div class="status-footer" data-i18n-tsp="footerAuto">
             Обновляется автоматически каждые 30 секунд
         </div>
     </div>
 
+    <script src="/static/i18n.js"></script>
     <script src="/static/status.js"></script>
 </body>
 </html>

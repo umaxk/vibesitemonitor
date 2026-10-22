@@ -649,11 +649,14 @@
         return key ? t(key) : error.message;
     }
 
-    function applyI18n(root) {
-        const scope = root || document;
-        scope.querySelectorAll('[data-i18n]').forEach((el) => {
-            el.textContent = t(el.dataset.i18n);
-        });
+function applyI18n(root) {
+    const scope = root || document;
+    scope.querySelectorAll('[data-i18n]').forEach((el) => {
+        el.textContent = t(el.dataset.i18n);
+    });
+    scope.querySelectorAll('[data-i18n-tsp]').forEach((el) => {
+        el.textContent = tsp(el.dataset.i18nTsp);
+    });
         scope.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
             el.setAttribute('placeholder', t(el.dataset.i18nPlaceholder));
         });

@@ -18,45 +18,33 @@ function formatPercent(value) {
     return value === null || value === undefined ? '—' : `${Number(value).toFixed(1)}%`;
 }
 
-function formatDuration(seconds) {
-    if (seconds === null || seconds === undefined) return '—';
-    const total = Math.max(0, Math.floor(seconds));
-    if (total < 60) return `${total} сек`;
-    if (total < 3600) return `${Math.floor(total / 60)} мин`;
-    if (total < 86400) return `${Math.floor(total / 3600)} ч`;
-    return `${Math.floor(total / 86400)} дн`;
-}
-
-function formatDate(timestamp) {
-    if (!timestamp) return '—';
-    return new Date(timestamp * 1000).toLocaleString('ru-RU', {
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-}
+const formatDuration = (seconds) => I18n.formatDurationShort(seconds);
+const formatDate = (timestamp) => I18n.formatDate(timestamp);
 
 function siteStatus(site) {
-    if (site.paused) return { key: 'paused', label: 'На паузе' };
-    if (site.last_status === 'up') return { key: 'up', label: 'Работает' };
-    if (site.last_status === 'down') return { key: 'down', label: 'Недоступен' };
-    return { key: 'unknown', label: 'Нет данных' };
+    if (site.paused) return { key: 'paused', label: I18n.tsp('status.paused') };
+    if (site.last_status === 'up') return { key: 'up', label: I18n.tsp('status.up') };
+    if (site.last_status === 'down') return { key: 'down', label: I18n.tsp('status.down') };
+    return { key: 'unknown', label: I18n.tsp('status.unknown') };
 }
 
 function sslLabel(site) {
     if (!site.ssl_expires_at) return '';
-    if (site.ssl_expired) return '<span class="badge badge-danger">SSL истёк</span>';
+    if (site.ssl_expired) return `<span class="badge badge-danger">${escapeHtml(I18n.t('ssl.expired'))}</span>`;
     const days = Math.ceil((site.ssl_expires_at - Date.now() / 1000) / 86400);
     const cls = days <= 30 ? 'badge-warning' : 'badge-ok';
-    return `<span class="badge ${cls}">SSL ${days} дн</span>`;
+    return `<span class="badge ${cls}">${escapeHtml(I18n.t('ssl.expiresIn', { n: days }))}</span>`;
 }
 
 function render(data) {
-    document.title = data.title || 'Статус сервисов';
-    document.getElementById('status-title').textContent = data.title || 'Статус сервисов';
+    if (data.ui_language && I18n.getLanguage() !== data.ui_language) {
+        I18n.setLanguage(data.ui_language);
+    }
+    const title = data.title || I18n.tsp('titleDefault');
+    document.title = title;
+    document.getElementById('status-title').textContent = title;
     document.getElementById('status-description').textContent = data.description || '';
-    document.getElementById('status-meta').textContent = `Обновлено ${new Date().toLocaleTimeString('ru-RU')}`;
+    document.getElementById('status-meta').textContent = I18n.tsp('updated', { time: I18n.formatTime(Date.now() / 1000) });
 
     const sites = data.sites || [];
     const active = sites.filter((site) => !site.paused);
@@ -66,19 +54,19 @@ function render(data) {
     const banner = document.getElementById('overall-banner');
     if (!sites.length) {
         banner.className = 'overall-banner';
-        banner.textContent = 'Публичные сервисы пока не добавлены';
+        banner.textContent = I18n.tsp('banner.noServices');
     } else if (!active.length) {
         banner.className = 'overall-banner';
-        banner.textContent = 'Все сервисы на паузе';
+        banner.textContent = I18n.tsp('banner.allPaused');
     } else if (downCount > 0) {
         banner.className = 'overall-banner down';
-        banner.textContent = `Есть проблемы: недоступно ${downCount} из ${active.length}`;
+        banner.textContent = I18n.tsp('banner.problems', { down: downCount, total: active.length });
     } else if (unknownCount > 0) {
         banner.className = 'overall-banner';
-        banner.textContent = `Ожидаем данные по ${unknownCount} сервис(ам)`;
+        banner.textContent = I18n.tPluralStatus(unknownCount, 'banner.awaiting');
     } else {
         banner.className = 'overall-banner ok';
-        banner.textContent = 'Все сервисы работают нормально';
+        banner.textContent = I18n.tsp('banner.allOk');
     }
 
     const grid = document.getElementById('public-grid');
@@ -97,9 +85,9 @@ function render(data) {
                         <span class="status-pill ${status.key}"><span class="dot"></span>${status.label}</span>
                     </div>
                     <div class="public-metrics">
-                        <span>24ч: ${escapeHtml(formatPercent(site.uptime_24h))}</span>
-                        <span>7д: ${escapeHtml(formatPercent(site.uptime_7d))}</span>
-                        ${site.last_check ? `<span>Проверен ${escapeHtml(formatDate(site.last_check))}</span>` : ''}
+                        <span>${escapeHtml(I18n.tsp('uptime24', { value: formatPercent(site.uptime_24h) }))}</span>
+                        <span>${escapeHtml(I18n.tsp('uptime7', { value: formatPercent(site.uptime_7d) }))}</span>
+                        ${site.last_check ? `<span>${escapeHtml(I18n.tsp('checkedAt', { date: formatDate(site.last_check) }))}</span>` : ''}
                     </div>
                     ${sslLabel(site) ? `<div class="site-badges" style="margin-top:.55rem">${sslLabel(site)}</div>` : ''}
                 </article>`;
@@ -109,13 +97,13 @@ function render(data) {
     const incidents = data.incidents || [];
     const incidentsBlock = document.getElementById('public-incidents');
     if (!incidents.length) {
-        incidentsBlock.innerHTML = '<p class="hint">За последние 7 дней инцидентов не было.</p>';
+        incidentsBlock.innerHTML = `<p class="hint">${escapeHtml(I18n.tsp('incidentsNone'))}</p>`;
     } else {
         incidentsBlock.innerHTML = incidents.map((incident) => `
             <div class="public-incident">
-                <strong>${escapeHtml(incident.site_name || 'Сайт')}</strong>
+                <strong>${escapeHtml(incident.site_name || I18n.tsp('incidentSite'))}</strong>
                 — ${escapeHtml(formatDate(incident.started_at))},
-                ${incident.ongoing ? '<span class="badge badge-danger">идёт</span>' : '<span class="badge badge-ok">восстановлен</span>'}
+                ${incident.ongoing ? `<span class="badge badge-danger">${escapeHtml(I18n.tsp('incidentOngoing'))}</span>` : `<span class="badge badge-ok">${escapeHtml(I18n.tsp('incidentRecovered'))}</span>`}
                 <span class="hint">(${escapeHtml(formatDuration(incident.duration_seconds))})</span>
             </div>`).join('');
     }
@@ -125,22 +113,22 @@ async function loadStatus() {
     try {
         const response = await fetch('/api/public/status', { credentials: 'same-origin' });
         if (response.status === 404) {
-            document.getElementById('status-title').textContent = 'Статус-страница отключена';
+            document.getElementById('status-title').textContent = I18n.tsp('banner.disabled');
             document.getElementById('status-description').textContent = '';
             document.getElementById('status-meta').textContent = '';
             const banner = document.getElementById('overall-banner');
             banner.className = 'overall-banner';
-            banner.textContent = 'Администратор отключил публичную страницу статуса.';
+            banner.textContent = I18n.tsp('banner.disabledDesc');
             document.getElementById('public-grid').innerHTML = '';
             document.getElementById('public-incidents').innerHTML = '';
             return;
         }
-        if (!response.ok) throw new Error('Ошибка загрузки');
+        if (!response.ok) throw new Error('Request failed');
         render(await response.json());
     } catch (error) {
         const banner = document.getElementById('overall-banner');
         banner.className = 'overall-banner down';
-        banner.textContent = 'Не удалось загрузить статус. Повторная попытка...';
+        banner.textContent = I18n.tsp('banner.loadFailed');
     }
 }
 
