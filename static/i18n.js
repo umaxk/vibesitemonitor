@@ -548,37 +548,32 @@
             .reduce((acc, [key, value]) => acc.split(`{${key}}`).join(String(value)), text);
     }
 
-    function t(key, params) {
-        const dict = DICT[currentLang] || DICT.ru;
+    function lookup(dict, key) {
         let entry = dict;
         for (const part of key.split('.')) {
             entry = entry ? entry[part] : undefined;
             if (entry === undefined) break;
         }
-        if (entry === undefined || entry === null) {
-            entry = DICT.ru;
-            for (const part of key.split('.')) {
-                entry = entry ? entry[part] : undefined;
-                if (entry === undefined) break;
-            }
+        return entry;
+    }
+
+    function t(key, params) {
+        let entry = lookup(DICT[currentLang] || DICT.ru, key);
+        if (entry === undefined) {
+            entry = lookup(DICT.ru, key);
         }
         if (typeof entry !== 'string') return key;
         return interpolate(entry, params);
     }
 
     function tsp(key, params) {
-        const entry = (STATUS_DICT[currentLang] || STATUS_DICT.ru)[key];
+        const entry = lookup(STATUS_DICT[currentLang] || STATUS_DICT.ru, key);
         if (typeof entry !== 'string') return key;
         return interpolate(entry, params);
     }
 
     function tPlural(n, dict, key, params) {
-        const dictRoot = dict || DICT[currentLang] || DICT.ru;
-        let entry = dictRoot;
-        for (const part of key.split('.')) {
-            entry = entry ? entry[part] : undefined;
-            if (entry === undefined) break;
-        }
+        const entry = lookup(dict || DICT[currentLang] || DICT.ru, key);
         if (typeof entry !== 'object' || entry === null) return String(n);
         const rules = new Intl.PluralRules(currentLang === 'ru' ? 'ru-RU' : 'en-US');
         const text = entry[rules.select(n)] ?? entry.other;
