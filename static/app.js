@@ -86,15 +86,33 @@ async function api(path, options = {}) {
     return data;
 }
 
+function closeUserMenu() {
+    const dropdown = $('#user-dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+    const btn = $('#user-menu-btn');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
 function updateUserBadge() {
     const badge = $('#user-badge');
+    const avatar = $('#user-avatar');
+    const dropdownName = $('#dropdown-name');
+    const dropdownRole = $('#dropdown-role');
+    closeUserMenu();
     if (!state.user) {
+        $('#user-menu').classList.add('hidden');
         badge.textContent = '';
-        badge.classList.add('hidden');
+        avatar.textContent = '';
+        dropdownName.textContent = '';
+        dropdownRole.textContent = '';
         return;
     }
-    badge.textContent = `${state.user.username} · ${state.user.role}`;
+    badge.textContent = state.user.username;
     badge.classList.remove('hidden');
+    avatar.textContent = state.user.username.charAt(0);
+    dropdownName.textContent = state.user.username;
+    dropdownRole.textContent = state.user.role;
+    $('#user-menu').classList.remove('hidden');
 }
 
 function showLogin() {
@@ -284,6 +302,12 @@ function renderSites() {
                 </div>
             </article>`;
     }).join('');
+}
+
+function syncFilterHighlight() {
+    $('#status-filter').classList.toggle('is-active', state.filters.status !== 'all');
+    $('#tag-filter').classList.toggle('is-active', state.filters.tag !== 'all');
+    $('#sort-select').classList.toggle('is-active', state.filters.sort !== 'name');
 }
 
 function populateTagFilter() {
@@ -898,6 +922,34 @@ function bindEvents() {
         showLogin();
     });
 
+    $('#user-menu-btn').addEventListener('click', (event) => {
+        event.stopPropagation();
+        const nowHidden = $('#user-dropdown').classList.toggle('hidden');
+        $('#user-menu-btn').setAttribute('aria-expanded', String(!nowHidden));
+    });
+
+    $('#filters-toggle').addEventListener('click', (event) => {
+        event.stopPropagation();
+        const open = $('#filter-selects').classList.toggle('open');
+        $('#filters-toggle').setAttribute('aria-expanded', String(open));
+    });
+
+    document.addEventListener('click', (event) => {
+        if (!event.target.closest('#user-menu')) closeUserMenu();
+        const panel = $('#filter-selects');
+        if (panel.classList.contains('open') && !event.target.closest('.header-toolbar')) {
+            panel.classList.remove('open');
+            $('#filters-toggle').setAttribute('aria-expanded', 'false');
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        closeUserMenu();
+        $('#filter-selects').classList.remove('open');
+        $('#filters-toggle').setAttribute('aria-expanded', 'false');
+    });
+
     $('#logout-all-btn').addEventListener('click', async () => {
         if (!confirm('Завершить все активные сессии, включая текущую?')) return;
         try {
@@ -932,6 +984,10 @@ function bindEvents() {
     $('#sort-select').addEventListener('change', (event) => {
         state.filters.sort = event.target.value;
         renderSites();
+    });
+
+    ['#status-filter', '#tag-filter', '#sort-select'].forEach((selector) => {
+        $(selector).addEventListener('change', syncFilterHighlight);
     });
 
     $('#sites-grid').addEventListener('click', (event) => {
@@ -1094,6 +1150,7 @@ async function init() {
         state.user = await api('/api/me');
         showApp();
         updateUserBadge();
+        syncFilterHighlight();
         await loadSites();
     } catch (error) {
         showLogin();
