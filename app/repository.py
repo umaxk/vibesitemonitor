@@ -24,6 +24,7 @@ DEFAULT_SETTINGS = {
     "status_page_title": "Статус сервисов",
     "status_page_description": "",
     "ssl_check_interval_seconds": 21600,
+    "ui_language": "ru",
 }
 
 RANGES = {
@@ -546,6 +547,7 @@ def list_public_status() -> dict:
         "title": settings.get("status_page_title", "Статус сервисов"),
         "description": settings.get("status_page_description", ""),
         "project_name": settings.get("project_name", "VibeMonitor"),
+        "ui_language": "en" if settings.get("ui_language") == "en" else "ru",
         "sites": sites,
         "incidents": incidents,
     }

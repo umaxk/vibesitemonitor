@@ -163,6 +163,7 @@ class SettingsUpdate(BaseModel):
     status_page_title: str = Field(..., min_length=1, max_length=100)
     status_page_description: str = Field(default="", max_length=500)
     ssl_check_interval_seconds: int = Field(..., ge=3600, le=604800)
+    ui_language: Literal["ru", "en"] = "ru"
 
 
 class PauseRequest(BaseModel):
@@ -221,16 +222,24 @@ def _guard_site_url(site: SiteBase) -> str:
     return url
 
 
+def ui_language() -> str:
+    return "en" if repository.get_settings().get("ui_language") == "en" else "ru"
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(
+        "index.html", {"request": request, "ui_language": ui_language()}
+    )
 
 
 @app.get("/status", response_class=HTMLResponse)
 async def status_page(request: Request):
     if not repository.get_settings().get("status_page_enabled"):
         raise HTTPException(status_code=404, detail="Status page is disabled")
-    return templates.TemplateResponse("status.html", {"request": request})
+    return templates.TemplateResponse(
+        "status.html", {"request": request, "ui_language": ui_language()}
+    )
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -296,10 +305,12 @@ async def logout_all(request: Request):
 @app.get("/api/me")
 async def me(request: Request):
     user = require_user(request)
+    settings = repository.get_settings()
     return {
         "id": user["user_id"],
         "username": user["username"],
         "role": user["role"],
+        "ui_language": "en" if settings.get("ui_language") == "en" else "ru",
     }
 
 
