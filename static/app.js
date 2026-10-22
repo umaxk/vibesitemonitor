@@ -147,6 +147,26 @@ function toggleTheme() {
     }
 }
 
+function toastError(error) {
+    toast(I18n.errorText(error), 'error');
+}
+
+function formatAgo(timestamp) {
+    return I18n.formatAgo(timestamp);
+}
+
+function formatDate(timestamp) {
+    return I18n.formatDate(timestamp);
+}
+
+function formatDuration(seconds) {
+    return I18n.formatDuration(seconds);
+}
+
+function formatLatency(value) {
+    return value === null || value === undefined ? '—' : `${Math.round(value)} ${I18n.t('unit.ms')}`;
+}
+
 function toast(message, type = 'info') {
     const container = $('#toast-container') || (() => {
         const el = document.createElement('div');
@@ -165,37 +185,22 @@ function toast(message, type = 'info') {
     }, 3200);
 }
 
-function formatAgo(timestamp) {
-    if (!timestamp) return '—';
-    const diff = Math.max(0, Math.floor(Date.now() / 1000 - timestamp));
-    if (diff < 10) return 'только что';
-    if (diff < 60) return `${diff} сек назад`;
-    if (diff < 3600) return `${Math.floor(diff / 60)} мин назад`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} ч назад`;
-    return `${Math.floor(diff / 86400)} дн назад`;
-}
-
-function formatDate(timestamp) {
-    if (!timestamp) return '—';
-    return new Date(timestamp * 1000).toLocaleString('ru-RU', {
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-}
-
-function formatDuration(seconds) {
-    if (seconds === null || seconds === undefined) return '—';
-    const total = Math.max(0, Math.floor(seconds));
-    if (total < 60) return `${total} сек`;
-    if (total < 3600) return `${Math.floor(total / 60)} мин`;
-    if (total < 86400) return `${Math.floor(total / 3600)} ч ${Math.floor((total % 3600) / 60)} мин`;
-    return `${Math.floor(total / 86400)} дн ${Math.floor((total % 86400) / 3600)} ч`;
-}
-
-function formatLatency(value) {
-    return value === null || value === undefined ? '—' : `${Math.round(value)} мс`;
+function toast(message, type = 'info') {
+    const container = $('#toast-container') || (() => {
+        const el = document.createElement('div');
+        el.id = 'toast-container';
+        document.body.appendChild(el);
+        return el;
+    })();
+    const item = document.createElement('div');
+    item.className = `toast toast-${type}`;
+    item.textContent = message;
+    container.appendChild(item);
+    setTimeout(() => item.classList.add('toast-visible'), 10);
+    setTimeout(() => {
+        item.classList.remove('toast-visible');
+        setTimeout(() => item.remove(), 300);
+    }, 3200);
 }
 
 function formatPercent(value) {
@@ -203,30 +208,30 @@ function formatPercent(value) {
 }
 
 function siteStatus(site) {
-    if (site.paused) return { key: 'paused', label: 'Пауза' };
-    if (site.last_status === 'up') return { key: 'up', label: 'Доступен' };
-    if (site.last_status === 'down') return { key: 'down', label: 'Недоступен' };
-    return { key: 'unknown', label: 'Нет данных' };
+    if (site.paused) return { key: 'paused', label: I18n.t('status.paused') };
+    if (site.last_status === 'up') return { key: 'up', label: I18n.t('status.up') };
+    if (site.last_status === 'down') return { key: 'down', label: I18n.t('status.down') };
+    return { key: 'unknown', label: I18n.t('status.unknown') };
 }
 
 function sslBadge(site) {
     if (!site.ssl_expires_at && !site.ssl_error) return '';
     if (site.ssl_error && !site.ssl_expires_at) {
-        return '<span class="badge badge-warning" title="Не удалось проверить SSL">SSL ?</span>';
+        return `<span class="badge badge-warning" title="${escapeHtml(I18n.t('ssl.unknownTitle'))}">SSL ?</span>`;
     }
     if (site.ssl_expired) {
-        return '<span class="badge badge-danger">SSL истёк</span>';
+        return `<span class="badge badge-danger">${escapeHtml(I18n.t('ssl.expired'))}</span>`;
     }
     const days = Math.ceil((site.ssl_expires_at - Date.now() / 1000) / 86400);
     const cls = days <= 30 ? 'badge-warning' : 'badge-ok';
-    return `<span class="badge ${cls}" title="Сертификат действителен до ${escapeHtml(formatDate(site.ssl_expires_at))}">SSL ${days} дн</span>`;
+    return `<span class="badge ${cls}" title="${escapeHtml(I18n.t('ssl.validUntil', { date: formatDate(site.ssl_expires_at) }))}">${escapeHtml(I18n.t('ssl.expiresIn', { n: days }))}</span>`;
 }
 
 function incidentNotice(site) {
     const hideHours = Number(state.meta.incident_hide_hours || 12);
     if (site.paused || site.last_status !== 'down' || !site.last_incident_time) return '';
     if (Date.now() / 1000 - site.last_incident_time > hideHours * 3600) return '';
-    return `<div class="incident-strip">Инцидент с ${escapeHtml(formatDate(site.last_incident_time))}</div>`;
+    return `<div class="incident-strip">${escapeHtml(I18n.t('incident.since', { date: formatDate(site.last_incident_time) }))}</div>`;
 }
 
 function renderSites() {
@@ -254,11 +259,11 @@ function renderSites() {
                 const diff = rank[siteStatus(a).key] - rank[siteStatus(b).key];
                 if (diff !== 0) return diff;
             }
-            return (a.name || a.url).localeCompare(b.name || b.url, 'ru');
+            return (a.name || a.url).localeCompare(b.name || b.url, I18n.locale());
         });
 
     if (!filtered.length) {
-        grid.innerHTML = '<div class="empty-state">Ничего не найдено</div>';
+        grid.innerHTML = `<div class="empty-state">${escapeHtml(I18n.t('empty.filtered'))}</div>`;
         return;
     }
 
@@ -270,8 +275,8 @@ function renderSites() {
             .join('');
         const actions = admin ? `
             <div class="card-actions">
-                <button class="btn-icon small" data-action="check" title="Проверить сейчас">↻</button>
-                <button class="btn-icon small" data-action="pause" title="${site.paused ? 'Возобновить' : 'Поставить на паузу'}">${site.paused ? '▶' : '⏸'}</button>
+                <button class="btn-icon small" data-action="check" title="${escapeHtml(I18n.t('card.checkTitle'))}">↻</button>
+                <button class="btn-icon small" data-action="pause" title="${escapeHtml(I18n.t(site.paused ? 'card.resumeTitle' : 'card.pauseTitle'))}">${site.paused ? '▶' : '⏸'}</button>
             </div>` : '';
         return `
             <article class="site-card status-${status.key}" data-id="${site.id}">
@@ -284,20 +289,20 @@ function renderSites() {
                 </div>
                 ${incidentNotice(site)}
                 <div class="site-meta">
-                    <span>${site.last_check ? `Проверен ${escapeHtml(formatAgo(site.last_check))}` : 'Ещё не проверялся'}</span>
+                    <span>${site.last_check ? escapeHtml(I18n.t('card.checkedAt', { ago: formatAgo(site.last_check) })) : escapeHtml(I18n.t('card.neverChecked'))}</span>
                     <span>HTTP ${site.last_http_code ?? '—'}</span>
                     <span>${escapeHtml(formatLatency(site.last_latency_ms))}</span>
-                    <span>24ч: ${escapeHtml(formatPercent(site.uptime_24h))}</span>
+                    <span>${escapeHtml(I18n.t('card.uptime24', { value: formatPercent(site.uptime_24h) }))}</span>
                 </div>
                 <div class="site-badges">
-                    ${site.paused ? '<span class="badge">Пауза</span>' : ''}
-                    ${site.public ? '<span class="badge badge-public">Публичный</span>' : ''}
+                    ${site.paused ? `<span class="badge">${escapeHtml(I18n.t('status.paused'))}</span>` : ''}
+                    ${site.public ? `<span class="badge badge-public">${escapeHtml(I18n.t('card.badgePublic'))}</span>` : ''}
                     ${sslBadge(site)}
                 </div>
                 ${tags ? `<div class="tags">${tags}</div>` : ''}
                 ${site.last_status === 'down' && site.last_error ? `<div class="site-error">${escapeHtml(site.last_error)}</div>` : ''}
                 <div class="site-card-footer">
-                    <span class="hint">${site.check_interval_seconds ? `Каждые ${site.check_interval_seconds} сек` : ''}</span>
+                    <span class="hint">${site.check_interval_seconds ? escapeHtml(I18n.t('card.everyNsec', { n: site.check_interval_seconds })) : ''}</span>
                     ${actions}
                 </div>
             </article>`;
@@ -312,8 +317,8 @@ function syncFilterHighlight() {
 
 function populateTagFilter() {
     const select = $('#tag-filter');
-    const tags = [...new Set(state.sites.flatMap((site) => site.tags))].sort((a, b) => a.localeCompare(b, 'ru'));
-    select.innerHTML = '<option value="all">Все теги</option>'
+    const tags = [...new Set(state.sites.flatMap((site) => site.tags))].sort((a, b) => a.localeCompare(b, I18n.locale()));
+    select.innerHTML = `<option value="all">${escapeHtml(I18n.t('filter.tagAll'))}</option>`
         + tags.map((tag) => `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`).join('');
     if (tags.includes(state.filters.tag)) {
         select.value = state.filters.tag;
@@ -341,51 +346,51 @@ async function handleCardAction(action, siteId) {
     try {
         if (action === 'check') {
             site.checking = true;
-            toast('Проверяем сайт...', 'info');
+            toast(I18n.t('toast.checking'), 'info');
             await api(`/api/sites/${siteId}/check`, { method: 'POST' });
-            toast('Проверка завершена', 'success');
+            toast(I18n.t('toast.checked'), 'success');
         } else if (action === 'pause') {
             await api(`/api/sites/${siteId}/pause`, {
                 method: 'POST',
                 body: { paused: !site.paused }
             });
-            toast(site.paused ? 'Сайт возобновлён' : 'Сайт на паузе', 'success');
+            toast(site.paused ? I18n.t('toast.resumed') : I18n.t('toast.paused'), 'success');
         }
         await loadSites();
         if (state.detailSiteId === siteId) {
             await loadDetail();
         }
     } catch (error) {
-        toast(error.message, 'error');
+        toastError(error);
     }
 }
 
 function renderStatCards(stats, site) {
     return `
         <div class="stat-grid">
-            <div class="stat-card"><span>Аптайм</span><strong>${escapeHtml(formatPercent(stats.uptime_percent))}</strong></div>
-            <div class="stat-card"><span>Проверок</span><strong>${stats.checks_count ?? 0}</strong></div>
-            <div class="stat-card"><span>Средний отклик</span><strong>${escapeHtml(formatLatency(stats.avg_latency_ms))}</strong></div>
-            <div class="stat-card"><span>SSL</span><strong>${site.ssl_expires_at ? escapeHtml(formatDate(site.ssl_expires_at)) : '—'}</strong></div>
+            <div class="stat-card"><span>${escapeHtml(I18n.t('detail.statUptime'))}</span><strong>${escapeHtml(formatPercent(stats.uptime_percent))}</strong></div>
+            <div class="stat-card"><span>${escapeHtml(I18n.t('detail.statChecks'))}</span><strong>${stats.checks_count ?? 0}</strong></div>
+            <div class="stat-card"><span>${escapeHtml(I18n.t('detail.statAvgLatency'))}</span><strong>${escapeHtml(formatLatency(stats.avg_latency_ms))}</strong></div>
+            <div class="stat-card"><span>${escapeHtml(I18n.t('ssl.column'))}</span><strong>${site.ssl_expires_at ? escapeHtml(formatDate(site.ssl_expires_at)) : '—'}</strong></div>
         </div>`;
 }
 
 function renderIncidents(incidents) {
     if (!incidents.length) {
-        return '<p class="hint">Инцидентов за выбранный период нет.</p>';
+        return `<p class="hint">${escapeHtml(I18n.t('incidents.none'))}</p>`;
     }
     const admin = state.user?.role === 'admin';
     return `<div class="incident-list">${incidents.map((incident) => {
         const stateLabel = incident.ongoing
-            ? '<span class="badge badge-danger">Идёт</span>'
-            : '<span class="badge badge-ok">Восстановлен</span>';
+            ? `<span class="badge badge-danger">${escapeHtml(I18n.t('incidents.ongoing'))}</span>`
+            : `<span class="badge badge-ok">${escapeHtml(I18n.t('incidents.recovered'))}</span>`;
         const ack = incident.acknowledged_at
-            ? `<span class="hint">Подтверждён ${escapeHtml(formatDate(incident.acknowledged_at))}</span>`
-            : '<span class="hint">Не подтверждён</span>';
+            ? `<span class="hint">${escapeHtml(I18n.t('incidents.acked', { date: formatDate(incident.acknowledged_at) }))}</span>`
+            : `<span class="hint">${escapeHtml(I18n.t('incidents.notAcked'))}</span>`;
         const controls = admin ? `
             <div class="incident-controls">
-                ${!incident.acknowledged_at ? `<button class="btn-secondary small" data-incident-ack="${incident.id}">Подтвердить</button>` : ''}
-                <button class="btn-secondary small" data-incident-note="${incident.id}">Заметка</button>
+                ${!incident.acknowledged_at ? `<button class="btn-secondary small" data-incident-ack="${incident.id}">${escapeHtml(I18n.t('incidents.ackBtn'))}</button>` : ''}
+                <button class="btn-secondary small" data-incident-note="${incident.id}">${escapeHtml(I18n.t('incidents.noteBtn'))}</button>
             </div>` : '';
         return `
             <div class="incident-item">
@@ -406,7 +411,7 @@ function renderCheckLog(checks) {
         return `
             <tr>
                 <td>${escapeHtml(formatDate(check.timestamp))}</td>
-                <td><span class="history-status ${up ? 'up' : 'down'}"><span class="history-dot"></span>${up ? 'Доступен' : 'Недоступен'}</span></td>
+                <td><span class="history-status ${up ? 'up' : 'down'}"><span class="history-dot"></span>${up ? escapeHtml(I18n.t('status.up')) : escapeHtml(I18n.t('status.down'))}</span></td>
                 <td>${check.http_code ?? '—'}</td>
                 <td>${escapeHtml(formatLatency(check.latency_ms))}</td>
                 <td class="${check.error ? 'history-error' : 'history-muted'}">${escapeHtml(check.error || '—')}</td>
@@ -416,23 +421,23 @@ function renderCheckLog(checks) {
         <details class="check-log">
             <summary>
                 <span class="check-log-chevron">›</span>
-                <span class="check-log-title">Лог запросов</span>
-                <span class="hint">последние ${checks.length}</span>
+                <span class="check-log-title">${escapeHtml(I18n.t('log.title'))}</span>
+                <span class="hint">${escapeHtml(I18n.t('log.lastN', { n: checks.length }))}</span>
             </summary>
             <div class="check-log-body">
                 ${checks.length ? `
                     <table class="history-table">
                         <thead>
                             <tr>
-                                <th>Время</th>
-                                <th>Статус</th>
-                                <th>HTTP</th>
-                                <th>Задержка</th>
-                                <th>Ошибка</th>
+                                <th>${escapeHtml(I18n.t('log.time'))}</th>
+                                <th>${escapeHtml(I18n.t('log.state'))}</th>
+                                <th>${escapeHtml(I18n.t('log.http'))}</th>
+                                <th>${escapeHtml(I18n.t('log.latency'))}</th>
+                                <th>${escapeHtml(I18n.t('log.error'))}</th>
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>
-                    </table>` : '<p class="hint">Записей пока нет.</p>'}
+                    </table>` : `<p class="hint">${escapeHtml(I18n.t('log.empty'))}</p>`}
             </div>
         </details>`;
 }
@@ -454,9 +459,9 @@ function renderDetail(site, stats, incidents, checks) {
             </div>
             <div class="detail-actions">
                 ${admin ? `
-                    <button class="btn-secondary small" data-detail-action="check">Проверить</button>
-                    <button class="btn-secondary small" data-detail-action="pause">${site.paused ? 'Возобновить' : 'Пауза'}</button>
-                    <button class="btn-danger small" data-detail-action="delete">Удалить</button>` : ''}
+                    <button class="btn-secondary small" data-detail-action="check">${escapeHtml(I18n.t('detail.check'))}</button>
+                    <button class="btn-secondary small" data-detail-action="pause">${escapeHtml(I18n.t(site.paused ? 'detail.resume' : 'detail.pause'))}</button>
+                    <button class="btn-danger small" data-detail-action="delete">${escapeHtml(I18n.t('common.delete'))}</button>` : ''}
             </div>
         </div>
         <div class="range-switch">
@@ -466,15 +471,15 @@ function renderDetail(site, stats, incidents, checks) {
         </div>
         ${renderStatCards(stats, site)}
         <div class="chart-block">
-            <h3>Задержка</h3>
+            <h3>${escapeHtml(I18n.t('detail.chartLatency'))}</h3>
             <div class="chart-wrap"><canvas id="latency-chart"></canvas></div>
         </div>
         <div class="chart-block">
-            <h3>Аптайм</h3>
+            <h3>${escapeHtml(I18n.t('detail.chartUptime'))}</h3>
             <div class="chart-wrap"><canvas id="uptime-chart"></canvas></div>
         </div>
         <div class="chart-block">
-            <h3>Инциденты</h3>
+            <h3>${escapeHtml(I18n.t('detail.chartIncidents'))}</h3>
             ${renderIncidents(incidents)}
             ${renderCheckLog(checks)}
         </div>`;
@@ -512,7 +517,7 @@ function renderCharts(site, stats, incidents) {
     const uptimeCanvas = document.getElementById('uptime-chart');
     if (!latencyCanvas || !uptimeCanvas) return;
 
-    const labels = stats.points.map((point) => new Date(point.timestamp * 1000).toLocaleString('ru-RU', {
+    const labels = stats.points.map((point) => new Date(point.timestamp * 1000).toLocaleString(I18n.locale(), {
         day: '2-digit',
         month: '2-digit',
         hour: '2-digit',
@@ -547,7 +552,7 @@ function renderCharts(site, stats, incidents) {
         data: {
             labels,
             datasets: [{
-                label: 'Задержка, мс',
+                label: I18n.t('detail.latencyDataset'),
                 data: latency,
                 borderColor: colors.accent,
                 backgroundColor: colors.accentFill,
@@ -566,7 +571,7 @@ function renderCharts(site, stats, incidents) {
         data: {
             labels,
             datasets: [{
-                label: 'Аптайм, %',
+                label: I18n.t('detail.uptimeDataset'),
                 data: uptime,
                 backgroundColor: uptime.map((value) => (value !== null && value < 100 ? colors.down : colors.up)),
                 borderRadius: 3
@@ -603,7 +608,7 @@ async function loadDetail() {
         $('#edit-site-btn').classList.toggle('hidden', state.user?.role !== 'admin');
         renderDetail(site, data.stats, data.incidents, checksData.checks);
     } catch (error) {
-        toast(error.message, 'error');
+        toastError(error);
     }
 }
 
@@ -617,7 +622,7 @@ async function openSiteDetail(siteId) {
         $('#modal-title').textContent = state.detailSite.name || state.detailSite.url;
     }
     $('#edit-site-btn').classList.add('hidden');
-    $('#modal-body').innerHTML = '<p class="hint">Загрузка...</p>';
+    $('#modal-body').innerHTML = `<p class="hint">${escapeHtml(I18n.t('common.loading'))}</p>`;
     openModal('modal');
     await loadDetail();
 }
@@ -627,19 +632,19 @@ async function handleDetailAction(action) {
     if (!site) return;
     try {
         if (action === 'check') {
-            toast('Проверяем сайт...', 'info');
+            toast(I18n.t('toast.checking'), 'info');
             await api(`/api/sites/${site.id}/check`, { method: 'POST' });
-            toast('Проверка завершена', 'success');
+            toast(I18n.t('toast.checked'), 'success');
         } else if (action === 'pause') {
             await api(`/api/sites/${site.id}/pause`, {
                 method: 'POST',
                 body: { paused: !site.paused }
             });
-            toast(site.paused ? 'Сайт возобновлён' : 'Сайт на паузе', 'success');
+            toast(site.paused ? I18n.t('toast.resumed') : I18n.t('toast.paused'), 'success');
         } else if (action === 'delete') {
-            if (!confirm(`Удалить ${site.name || site.url}? История проверок и инциденты также будут удалены.`)) return;
+            if (!confirm(I18n.t('confirm.deleteSite', { name: site.name || site.url }))) return;
             await api(`/api/sites/${site.id}`, { method: 'DELETE' });
-            toast('Сайт удалён', 'success');
+            toast(I18n.t('toast.deleted'), 'success');
             closeModal('modal');
             state.detailSiteId = null;
             await loadSites();
@@ -648,7 +653,7 @@ async function handleDetailAction(action) {
         await loadSites();
         await loadDetail();
     } catch (error) {
-        toast(error.message, 'error');
+        toastError(error);
     }
 }
 
@@ -656,27 +661,27 @@ async function handleIncidentAction(action, incidentId) {
     try {
         if (action === 'ack') {
             await api(`/api/incidents/${incidentId}/ack`, { method: 'POST' });
-            toast('Инцидент подтверждён', 'success');
+            toast(I18n.t('toast.incidentAcked'), 'success');
         } else if (action === 'note') {
-            const note = prompt('Заметка к инциденту:');
+            const note = prompt(I18n.t('prompt.incidentNote'));
             if (note === null) return;
             await api(`/api/incidents/${incidentId}`, {
                 method: 'PATCH',
                 body: { note }
             });
-            toast('Заметка сохранена', 'success');
+            toast(I18n.t('toast.noteSaved'), 'success');
         }
         await loadDetail();
         await loadSites();
     } catch (error) {
-        toast(error.message, 'error');
+        toastError(error);
     }
 }
 
 function openAddSite(site = null) {
     state.editingSiteId = site ? site.id : null;
-    $('#add-modal-title').textContent = site ? 'Редактировать сайт' : 'Добавить сайт';
-    $('#confirm-add-btn').textContent = site ? 'Сохранить' : 'Добавить';
+    $('#add-modal-title').textContent = I18n.t(site ? 'add.edit' : 'add.add');
+    $('#confirm-add-btn').textContent = I18n.t(site ? 'common.save' : 'add.confirm');
     $('#new-site-url').value = site?.url || '';
     $('#new-site-name').value = site?.name || '';
     $('#new-site-interval').value = site?.check_interval_seconds || '';
@@ -693,7 +698,7 @@ async function saveSite() {
     const tags = $('#new-site-tags').value.split(',').map((tag) => tag.trim()).filter(Boolean);
     const isPublic = $('#new-site-public').checked;
     if (!url) {
-        toast('Укажите URL', 'error');
+        toast(I18n.t('toast.needUrl'), 'error');
         return;
     }
     const payload = {
@@ -706,10 +711,10 @@ async function saveSite() {
     try {
         if (state.editingSiteId) {
             await api(`/api/sites/${state.editingSiteId}`, { method: 'PUT', body: payload });
-            toast('Сайт обновлён', 'success');
+            toast(I18n.t('toast.siteUpdated'), 'success');
         } else {
             await api('/api/sites', { method: 'POST', body: payload });
-            toast('Сайт добавлен', 'success');
+            toast(I18n.t('toast.siteAdded'), 'success');
         }
         closeModal('add-modal');
         await loadSites();
@@ -717,7 +722,7 @@ async function saveSite() {
             await loadDetail();
         }
     } catch (error) {
-        toast(error.message, 'error');
+        toastError(error);
     }
 }
 
@@ -749,6 +754,7 @@ function collectSettings() {
     const base = state.settings || {};
     return {
         ...base,
+        ui_language: $('#ui-language-select').value,
         project_name: $('#project-name-input').value.trim() || 'VibeMonitor',
         check_interval_seconds: Number($('#interval-input').value),
         timeout_seconds: Number($('#timeout-input').value),
@@ -764,6 +770,7 @@ function collectSettings() {
 
 function fillSettingsForm(settings) {
     state.settings = settings;
+    $('#ui-language-select').value = settings.ui_language === 'en' ? 'en' : 'ru';
     $('#project-name-input').value = settings.project_name || '';
     $('#interval-input').value = settings.check_interval_seconds;
     $('#timeout-input').value = settings.timeout_seconds;
@@ -781,20 +788,30 @@ async function saveSettings() {
         const payload = collectSettings();
         await api('/api/settings', { method: 'PUT', body: payload });
         state.settings = payload;
-        toast('Настройки сохранены', 'success');
+        toast(I18n.t('toast.settingsSaved'), 'success');
+        const settingsOpen = !$('#settings-modal').classList.contains('hidden');
+        if ((payload.ui_language || 'ru') !== I18n.getLanguage()) {
+            I18n.setLanguage(payload.ui_language || 'ru');
+        }
         await loadSites();
+        if (settingsOpen) {
+            await loadSettingsData();
+        }
+        if (state.detailSite) {
+            await loadDetail();
+        }
     } catch (error) {
-        toast(error.message, 'error');
+        toastError(error);
     }
 }
 
 function renderRecipients(recipients, telegramConfigured) {
     $('#telegram-status').textContent = telegramConfigured
-        ? 'Telegram настроен: уведомления отправляются перечисленным получателям.'
-        : 'TELEGRAM_BOT_TOKEN не задан. Уведомления отключены.';
+        ? I18n.t('recipients.telegramOk')
+        : I18n.t('recipients.telegramOff');
     const list = $('#recipients-list');
     if (!recipients.length) {
-        list.innerHTML = '<p class="hint">Получатели не добавлены.</p>';
+        list.innerHTML = `<p class="hint">${escapeHtml(I18n.t('recipients.empty'))}</p>`;
         return;
     }
     list.innerHTML = recipients.map((recipient) => `
@@ -803,8 +820,8 @@ function renderRecipients(recipients, telegramConfigured) {
                 <strong>${escapeHtml(recipient.label || recipient.chat_id)}</strong>
                 <div class="hint">${escapeHtml(recipient.chat_id)}</div>
             </div>
-            <label class="toggle-label"><input type="checkbox" data-recipient-toggle="${recipient.id}" ${recipient.enabled ? 'checked' : ''}> вкл</label>
-            <button class="btn-danger small" data-delete-recipient="${recipient.id}">Удалить</button>
+            <label class="toggle-label"><input type="checkbox" data-recipient-toggle="${recipient.id}" ${recipient.enabled ? 'checked' : ''}> ${escapeHtml(I18n.t('recipients.on'))}</label>
+            <button class="btn-danger small" data-delete-recipient="${recipient.id}">${escapeHtml(I18n.t('common.delete'))}</button>
         </div>`).join('');
 }
 
@@ -814,14 +831,14 @@ function renderUsers(users) {
         <div class="list-row">
             <div>
                 <strong>${escapeHtml(user.username)}</strong>
-                ${state.user && user.username === state.user.username ? '<span class="hint"> (вы)</span>' : ''}
+                ${state.user && user.username === state.user.username ? `<span class="hint">${escapeHtml(I18n.t('users.you'))}</span>` : ''}
             </div>
             <select data-user-role="${user.id}">
                 <option value="viewer" ${user.role === 'viewer' ? 'selected' : ''}>viewer</option>
                 <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>admin</option>
             </select>
-            <button class="btn-secondary small" data-reset-password="${user.id}">Пароль</button>
-            <button class="btn-danger small" data-delete-user="${user.id}">Удалить</button>
+            <button class="btn-secondary small" data-reset-password="${user.id}">${escapeHtml(I18n.t('users.password'))}</button>
+            <button class="btn-danger small" data-delete-user="${user.id}">${escapeHtml(I18n.t('common.delete'))}</button>
         </div>`).join('');
 }
 
@@ -841,7 +858,7 @@ async function openSettings() {
     try {
         await loadSettingsData();
     } catch (error) {
-        toast(error.message, 'error');
+        toastError(error);
     }
 }
 
@@ -849,17 +866,17 @@ async function addRecipient() {
     const chatId = $('#recipient-chat-input').value.trim();
     const label = $('#recipient-label-input').value.trim();
     if (!chatId) {
-        toast('Укажите chat_id', 'error');
+        toast(I18n.t('toast.needChatId'), 'error');
         return;
     }
     try {
         await api('/api/recipients', { method: 'POST', body: { chat_id: chatId, label } });
         $('#recipient-chat-input').value = '';
         $('#recipient-label-input').value = '';
-        toast('Получатель добавлен', 'success');
+        toast(I18n.t('toast.recipientAdded'), 'success');
         await loadSettingsData();
     } catch (error) {
-        toast(error.message, 'error');
+        toastError(error);
     }
 }
 
@@ -868,17 +885,17 @@ async function addUser() {
     const password = $('#new-user-password').value;
     const role = $('#new-user-role').value;
     if (!username || !password) {
-        toast('Укажите логин и пароль', 'error');
+        toast(I18n.t('toast.needLoginPass'), 'error');
         return;
     }
     try {
         await api('/api/users', { method: 'POST', body: { username, password, role } });
         $('#new-user-name').value = '';
         $('#new-user-password').value = '';
-        toast('Пользователь добавлен', 'success');
+        toast(I18n.t('toast.userAdded'), 'success');
         await loadSettingsData();
     } catch (error) {
-        toast(error.message, 'error');
+        toastError(error);
     }
 }
 
@@ -887,7 +904,7 @@ function bindEvents() {
         const username = $('#username-input').value.trim();
         const password = $('#password-input').value;
         if (!username || !password) {
-            $('#login-error').textContent = 'Введите логин и пароль';
+            $('#login-error').textContent = I18n.t('login.enter');
             $('#login-error').classList.remove('hidden');
             return;
         }
@@ -900,8 +917,8 @@ function bindEvents() {
             await loadSites();
         } catch (error) {
             $('#login-error').textContent = error.message === 'Too many attempts'
-                ? 'Слишком много попыток, попробуйте позже'
-                : 'Неверный логин или пароль';
+                ? I18n.t('login.tooMany')
+                : I18n.t('login.badCredentials');
             $('#login-error').classList.remove('hidden');
         }
     });
@@ -951,7 +968,7 @@ function bindEvents() {
     });
 
     $('#logout-all-btn').addEventListener('click', async () => {
-        if (!confirm('Завершить все активные сессии, включая текущую?')) return;
+        if (!confirm(I18n.t('confirm.logoutAll'))) return;
         try {
             await api('/api/logout-all', { method: 'POST' });
         } catch (error) {
@@ -1064,9 +1081,9 @@ function bindEvents() {
                 method: 'PUT',
                 body: { enabled: toggle.checked }
             });
-            toast(toggle.checked ? 'Получатель включён' : 'Получатель отключён', 'success');
+            toast(toggle.checked ? I18n.t('toast.recipientEnabled') : I18n.t('toast.recipientDisabled'), 'success');
         } catch (error) {
-            toast(error.message, 'error');
+            toastError(error);
             await loadSettingsData();
         }
     });
@@ -1074,22 +1091,22 @@ function bindEvents() {
     $('#recipients-list').addEventListener('click', async (event) => {
         const button = event.target.closest('[data-delete-recipient]');
         if (!button) return;
-        if (!confirm('Удалить получателя?')) return;
+        if (!confirm(I18n.t('confirm.deleteRecipient'))) return;
         try {
             await api(`/api/recipients/${button.dataset.deleteRecipient}`, { method: 'DELETE' });
-            toast('Получатель удалён', 'success');
+            toast(I18n.t('toast.recipientDeleted'), 'success');
             await loadSettingsData();
         } catch (error) {
-            toast(error.message, 'error');
+            toastError(error);
         }
     });
 
     $('#test-notifications-btn').addEventListener('click', async () => {
         try {
             await api('/api/notifications/test', { method: 'POST' });
-            toast('Тестовое сообщение отправлено', 'success');
+            toast(I18n.t('toast.testSent'), 'success');
         } catch (error) {
-            toast(error.message, 'error');
+            toastError(error);
         }
     });
 
@@ -1101,14 +1118,14 @@ function bindEvents() {
                 method: 'PUT',
                 body: { role: select.value }
             });
-            toast('Роль обновлена', 'success');
+            toast(I18n.t('toast.roleUpdated'), 'success');
             if (Number(select.dataset.userRole) === state.user?.id) {
                 window.location.reload();
                 return;
             }
             await loadSettingsData();
         } catch (error) {
-            toast(error.message, 'error');
+            toastError(error);
             await loadSettingsData();
         }
     });
@@ -1116,28 +1133,28 @@ function bindEvents() {
     $('#users-list').addEventListener('click', async (event) => {
         const deleteButton = event.target.closest('[data-delete-user]');
         if (deleteButton) {
-            if (!confirm('Удалить пользователя?')) return;
+            if (!confirm(I18n.t('confirm.deleteUser'))) return;
             try {
                 await api(`/api/users/${deleteButton.dataset.deleteUser}`, { method: 'DELETE' });
-                toast('Пользователь удалён', 'success');
+                toast(I18n.t('toast.userDeleted'), 'success');
                 await loadSettingsData();
             } catch (error) {
-                toast(error.message, 'error');
+                toastError(error);
             }
             return;
         }
         const resetButton = event.target.closest('[data-reset-password]');
         if (resetButton) {
-            const password = prompt('Новый пароль (минимум 8 символов):');
+            const password = prompt(I18n.t('prompt.newPassword'));
             if (!password) return;
             try {
                 await api(`/api/users/${resetButton.dataset.resetPassword}`, {
                     method: 'PUT',
                     body: { password }
                 });
-                toast('Пароль обновлён', 'success');
+                toast(I18n.t('toast.passwordUpdated'), 'success');
             } catch (error) {
-                toast(error.message, 'error');
+                toastError(error);
             }
         }
     });
@@ -1150,6 +1167,9 @@ async function init() {
         state.user = await api('/api/me');
         showApp();
         updateUserBadge();
+        if (state.user.ui_language) {
+            I18n.setLanguage(state.user.ui_language);
+        }
         syncFilterHighlight();
         await loadSites();
     } catch (error) {

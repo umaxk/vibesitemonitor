@@ -10,11 +10,11 @@
     <div id="login-screen" class="login-screen hidden">
         <div class="login-box">
             <h1 id="login-title">VibeMonitor</h1>
-            <p>Вход в панель мониторинга</p>
-            <input type="text" id="username-input" placeholder="Логин" autocomplete="username" autofocus>
-            <input type="password" id="password-input" placeholder="Пароль" autocomplete="current-password">
-            <button id="login-btn">Войти</button>
-            <p id="login-error" class="error hidden">Неверный логин или пароль</p>
+            <p data-i18n="login.subtitle">Вход в панель мониторинга</p>
+            <input type="text" id="username-input" placeholder="Логин" data-i18n-placeholder="login.username" autocomplete="username" autofocus>
+            <input type="password" id="password-input" placeholder="Пароль" data-i18n-placeholder="login.password" autocomplete="current-password">
+            <button id="login-btn" data-i18n="login.submit">Войти</button>
+            <p id="login-error" class="error hidden" data-i18n="login.badCredentials">Неверный логин или пароль</p>
         </div>
     </div>
 
@@ -22,41 +22,41 @@
         <header class="app-header">
             <h1 id="app-title" class="header-logo">VibeMonitor</h1>
             <div class="header-toolbar">
-                <input type="search" id="search-input" class="search-input" placeholder="Поиск сайта...">
-                <button id="filters-toggle" class="btn-ghost filters-toggle" title="Фильтры" aria-expanded="false">
+                <input type="search" id="search-input" class="search-input" placeholder="Поиск сайта..." data-i18n-placeholder="header.searchPlaceholder">
+                <button id="filters-toggle" class="btn-ghost filters-toggle" title="Фильтры" data-i18n-title="header.filtersTitle" aria-expanded="false">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                         <path d="M2 4h12M4.5 8h7M6.5 12h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
                     </svg>
                 </button>
                 <div id="filter-selects" class="filter-selects">
-                    <select id="status-filter" class="select-input" title="Фильтр по статусу">
-                        <option value="all">Все статусы</option>
-                        <option value="up">Доступны</option>
-                        <option value="down">Недоступны</option>
-                        <option value="unknown">Без данных</option>
-                        <option value="paused">На паузе</option>
+                    <select id="status-filter" class="select-input">
+                        <option value="all" data-i18n="filter.statusAll">Все статусы</option>
+                        <option value="up" data-i18n="filter.statusUp">Доступны</option>
+                        <option value="down" data-i18n="filter.statusDown">Недоступны</option>
+                        <option value="unknown" data-i18n="filter.statusUnknown">Без данных</option>
+                        <option value="paused" data-i18n="filter.statusPaused">На паузе</option>
                     </select>
-                    <select id="tag-filter" class="select-input" title="Фильтр по тегу">
-                        <option value="all">Все теги</option>
+                    <select id="tag-filter" class="select-input">
+                        <option value="all" data-i18n="filter.tagAll">Все теги</option>
                     </select>
-                    <select id="sort-select" class="select-input" title="Сортировка">
-                        <option value="name">По имени</option>
-                        <option value="status">По статусу</option>
-                        <option value="latency">По задержке</option>
+                    <select id="sort-select" class="select-input">
+                        <option value="name" data-i18n="filter.sortName">По имени</option>
+                        <option value="status" data-i18n="filter.sortStatus">По статусу</option>
+                        <option value="latency" data-i18n="filter.sortLatency">По задержке</option>
                     </select>
                 </div>
             </div>
             <div class="header-controls">
-                <button id="theme-btn" class="btn-ghost" title="Сменить тему">◐</button>
-                <button id="settings-btn" class="btn-ghost settings-btn hidden" title="Настройки">
+                <button id="theme-btn" class="btn-ghost" title="Сменить тему" data-i18n-title="header.themeTitle">◐</button>
+                <button id="settings-btn" class="btn-ghost settings-btn hidden" title="Настройки" data-i18n-title="header.settingsTitle">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <circle cx="12" cy="12" r="3"/>
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                     </svg>
-                    <span class="btn-label">Настройки</span>
+                    <span class="btn-label" data-i18n="header.settingsTitle">Настройки</span>
                 </button>
                 <div id="user-menu" class="user-menu hidden">
-                    <button id="user-menu-btn" class="user-menu-btn" aria-expanded="false" title="Аккаунт">
+                    <button id="user-menu-btn" class="user-menu-btn" aria-expanded="false" title="Аккаунт" data-i18n-title="header.accountTitle">
                         <span id="user-avatar" class="user-avatar"></span>
                         <span id="user-badge" class="user-name"></span>
                         <span class="caret" aria-hidden="true">▾</span>
@@ -67,8 +67,8 @@
                             <span id="dropdown-role" class="dropdown-role"></span>
                         </div>
                         <div class="dropdown-sep"></div>
-                        <button id="logout-btn" class="dropdown-item" title="Выйти из текущей сессии">Выйти</button>
-                        <button id="logout-all-btn" class="dropdown-item" title="Завершить все активные сессии">Выйти везде</button>
+                        <button id="logout-btn" class="dropdown-item" title="Выйти из текущей сессии" data-i18n-title="menu.logoutTitle" data-i18n="menu.logout">Выйти</button>
+                        <button id="logout-all-btn" class="dropdown-item" title="Завершить все активные сессии" data-i18n-title="menu.logoutAllTitle" data-i18n="menu.logoutAll">Выйти везде</button>
                     </div>
                 </div>
             </div>
@@ -78,97 +78,104 @@
             <section id="sites-grid" class="sites-grid"></section>
         </main>
 
-        <button id="add-site-btn" class="btn-icon add-site-fab hidden" title="Добавить сайт" aria-label="Добавить сайт">+</button>
+        <button id="add-site-btn" class="btn-icon add-site-fab hidden" title="Добавить сайт" data-i18n-title="fab.title" data-i18n-aria-label="fab.title" aria-label="Добавить сайт">+</button>
     </div>
 
     <div id="settings-modal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Настройки</h2>
+                <h2 data-i18n="settings.title">Настройки</h2>
                 <button class="modal-close" data-close="settings-modal">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="tabs">
-                    <button class="tab active" data-tab="general">Общие</button>
-                    <button class="tab" data-tab="status">Статус-страница</button>
-                    <button class="tab" data-tab="notifications">Уведомления</button>
-                    <button class="tab" data-tab="users">Пользователи</button>
+                    <button class="tab active" data-tab="general" data-i18n="tab.general">Общие</button>
+                    <button class="tab" data-tab="status" data-i18n="tab.status">Статус-страница</button>
+                    <button class="tab" data-tab="notifications" data-i18n="tab.notifications">Уведомления</button>
+                    <button class="tab" data-tab="users" data-i18n="tab.users">Пользователи</button>
                 </div>
 
                 <div id="tab-general" class="tab-panel">
                     <div class="form-group">
-                        <label>Название проекта</label>
+                        <label data-i18n="settings.language">Язык интерфейса</label>
+                        <select id="ui-language-select">
+                            <option value="ru">Русский</option>
+                            <option value="en">English</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="settings.projectName">Название проекта</label>
                         <input type="text" id="project-name-input" maxlength="100">
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Интервал проверки (сек)</label>
+                            <label data-i18n="settings.interval">Интервал проверки (сек)</label>
                             <input type="number" id="interval-input" min="5" max="3600">
                         </div>
                         <div class="form-group">
-                            <label>Таймаут (сек)</label>
+                            <label data-i18n="settings.timeout">Таймаут (сек)</label>
                             <input type="number" id="timeout-input" min="1" max="60">
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Скрывать инцидент в карточке (часов)</label>
+                            <label data-i18n="settings.incidentHide">Скрывать инцидент в карточке (часов)</label>
                             <input type="number" id="incident-hide-input" min="1" max="720">
                         </div>
                         <div class="form-group">
-                            <label>SSL-проверка (часов)</label>
+                            <label data-i18n="settings.sslInterval">SSL-проверка (часов)</label>
                             <input type="number" id="ssl-interval-input" min="1" max="168">
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Хранить проверки (дней)</label>
+                            <label data-i18n="settings.retention">Хранить проверки (дней)</label>
                             <input type="number" id="retention-input" min="1" max="365">
                         </div>
                         <div class="form-group">
-                            <label>Хранить инциденты (дней)</label>
+                            <label data-i18n="settings.incidentRetention">Хранить инциденты (дней)</label>
                             <input type="number" id="incident-retention-input" min="7" max="730">
                         </div>
                     </div>
-                    <button id="save-settings-btn" class="btn-primary">Сохранить</button>
+                    <button id="save-settings-btn" class="btn-primary" data-i18n="common.save">Сохранить</button>
                 </div>
 
                 <div id="tab-status" class="tab-panel hidden">
                     <div class="form-group checkbox-row">
-                        <label><input type="checkbox" id="status-enabled-input"> Включить публичную страницу /status</label>
+                        <label><input type="checkbox" id="status-enabled-input"> <span data-i18n="statuspage.enabled">Включить публичную страницу /status</span></label>
                     </div>
                     <div class="form-group">
-                        <label>Заголовок</label>
+                        <label data-i18n="statuspage.title">Заголовок</label>
                         <input type="text" id="status-title-input" maxlength="100">
                     </div>
                     <div class="form-group">
-                        <label>Описание</label>
+                        <label data-i18n="statuspage.description">Описание</label>
                         <textarea id="status-description-input" maxlength="500" rows="3"></textarea>
                     </div>
-                    <p class="hint">На странице показываются только сайты с включённым флагом «Публичный».</p>
-                    <button id="save-status-btn" class="btn-primary">Сохранить</button>
+                    <p class="hint" data-i18n="statuspage.hint">На странице показываются только сайты с включённым флагом «Публичный».</p>
+                    <button id="save-status-btn" class="btn-primary" data-i18n="common.save">Сохранить</button>
                 </div>
 
                 <div id="tab-notifications" class="tab-panel hidden">
                     <p id="telegram-status" class="hint"></p>
                     <div class="inline-form">
-                        <input type="text" id="recipient-chat-input" placeholder="chat_id, например 123456789">
-                        <input type="text" id="recipient-label-input" placeholder="Подпись">
-                        <button id="add-recipient-btn" class="btn-primary">Добавить</button>
+                        <input type="text" id="recipient-chat-input" placeholder="chat_id, например 123456789" data-i18n-placeholder="recipients.chatId">
+                        <input type="text" id="recipient-label-input" placeholder="Подпись" data-i18n-placeholder="recipients.label">
+                        <button id="add-recipient-btn" class="btn-primary" data-i18n="recipients.add">Добавить</button>
                     </div>
                     <div id="recipients-list" class="list-block"></div>
-                    <button id="test-notifications-btn" class="btn-secondary">Отправить тест</button>
+                    <button id="test-notifications-btn" class="btn-secondary" data-i18n="recipients.test">Отправить тест</button>
                 </div>
 
                 <div id="tab-users" class="tab-panel hidden">
                     <div class="inline-form">
-                        <input type="text" id="new-user-name" placeholder="Логин">
-                        <input type="password" id="new-user-password" placeholder="Пароль (мин. 8)">
+                        <input type="text" id="new-user-name" placeholder="Логин" data-i18n-placeholder="users.newName">
+                        <input type="password" id="new-user-password" placeholder="Пароль (мин. 8)" data-i18n-placeholder="users.newPassword">
                         <select id="new-user-role">
                             <option value="viewer">viewer</option>
                             <option value="admin">admin</option>
                         </select>
-                        <button id="add-user-btn" class="btn-primary">Добавить</button>
+                        <button id="add-user-btn" class="btn-primary" data-i18n="users.add">Добавить</button>
                     </div>
                     <div id="users-list" class="list-block"></div>
                 </div>
@@ -184,25 +191,25 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label>URL *</label>
-                    <input type="url" id="new-site-url" placeholder="https://example.com">
+                    <label data-i18n="add.url">URL *</label>
+                    <input type="url" id="new-site-url" placeholder="https://example.com" data-i18n-placeholder="add.urlPlaceholder">
                 </div>
                 <div class="form-group">
-                    <label>Название</label>
-                    <input type="text" id="new-site-name" placeholder="Example" maxlength="200">
+                    <label data-i18n="add.name">Название</label>
+                    <input type="text" id="new-site-name" placeholder="Example" data-i18n-placeholder="add.namePlaceholder" maxlength="200">
                 </div>
                 <div class="form-group">
-                    <label>Интервал проверки (сек) — необязательно</label>
-                    <input type="number" id="new-site-interval" min="5" max="3600" placeholder="По умолчанию">
+                    <label data-i18n="add.interval">Интервал проверки (сек) — необязательно</label>
+                    <input type="number" id="new-site-interval" min="5" max="3600" placeholder="По умолчанию" data-i18n-placeholder="add.intervalPlaceholder">
                 </div>
                 <div class="form-group">
-                    <label>Теги (через запятую)</label>
-                    <input type="text" id="new-site-tags" placeholder="prod, api">
+                    <label data-i18n="add.tags">Теги (через запятую)</label>
+                    <input type="text" id="new-site-tags" placeholder="prod, api" data-i18n-placeholder="add.tagsPlaceholder">
                 </div>
                 <div class="form-group checkbox-row">
-                    <label><input type="checkbox" id="new-site-public"> Показывать на публичной статус-странице</label>
+                    <label><input type="checkbox" id="new-site-public"> <span data-i18n="add.public">Показывать на публичной статус-странице</span></label>
                 </div>
-                <button id="confirm-add-btn" class="btn-primary">Добавить</button>
+                <button id="confirm-add-btn" class="btn-primary" data-i18n="add.confirm">Добавить</button>
             </div>
         </div>
     </div>
@@ -212,7 +219,7 @@
             <div class="modal-header">
                 <h2 id="modal-title"></h2>
                 <div class="modal-header-actions">
-                    <button id="edit-site-btn" class="modal-action-btn hidden">Редактировать</button>
+                    <button id="edit-site-btn" class="modal-action-btn hidden" data-i18n="detail.edit">Редактировать</button>
                     <button class="modal-close" data-close="modal">&times;</button>
                 </div>
             </div>
@@ -221,6 +228,7 @@
     </div>
 
     <script src="/static/vendor/chart.umd.min.js"></script>
+    <script src="/static/i18n.js"></script>
     <script src="/static/app.js"></script>
 </body>
 </html>
