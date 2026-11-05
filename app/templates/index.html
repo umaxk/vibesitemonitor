@@ -22,6 +22,10 @@
         <header class="app-header">
             <h1 id="app-title" class="header-logo">VibeMonitor</h1>
             <div class="header-toolbar">
+                <nav id="mode-switch" class="mode-switch" aria-label="Режим мониторинга">
+                    <button type="button" class="mode-btn active" data-mode="sites" data-i18n="mode.sites">Сайты</button>
+                    <button type="button" class="mode-btn" data-mode="endpoints" data-i18n="mode.endpoints">Эндпоинты</button>
+                </nav>
                 <input type="search" id="search-input" class="search-input" placeholder="Поиск сайта..." data-i18n-placeholder="header.searchPlaceholder">
                 <button id="filters-toggle" class="btn-ghost filters-toggle" title="Фильтры" data-i18n-title="header.filtersTitle" aria-expanded="false">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -74,7 +78,25 @@
         </header>
 
         <main>
-            <section id="sites-grid" class="sites-grid"></section>
+            <div id="sites-view">
+                <section id="sites-grid" class="sites-grid"></section>
+            </div>
+            <section id="endpoints-view" class="hidden">
+                <div class="endpoints-toolbar">
+                    <input type="search" id="endpoint-search" class="search-input" placeholder="Поиск эндпоинта..." data-i18n-placeholder="endpoint.searchPlaceholder">
+                    <select id="endpoint-site-filter" class="select-input">
+                        <option value="all" data-i18n="endpoint.siteAll">Все сайты</option>
+                    </select>
+                    <select id="endpoint-status-filter" class="select-input">
+                        <option value="all" data-i18n="filter.statusAll">Все статусы</option>
+                        <option value="up" data-i18n="filter.statusUp">Доступны</option>
+                        <option value="down" data-i18n="filter.statusDown">Недоступны</option>
+                        <option value="unknown" data-i18n="filter.statusUnknown">Без данных</option>
+                        <option value="paused" data-i18n="filter.statusPaused">На паузе</option>
+                    </select>
+                </div>
+                <div id="endpoints-list" class="endpoints-list"></div>
+            </section>
         </main>
 
         <footer class="app-footer">
@@ -220,12 +242,52 @@
         </div>
     </div>
 
+    <div id="endpoint-modal" class="modal hidden">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2 id="endpoint-modal-title">Добавить эндпоинт</h2>
+                <button class="modal-close" data-close="endpoint-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label data-i18n="endpoint.site">Сайт *</label>
+                    <select id="endpoint-site-input"></select>
+                </div>
+                <div class="form-group">
+                    <label data-i18n="endpoint.path">Путь *</label>
+                    <input type="text" id="endpoint-path-input" placeholder="/api/health" data-i18n-placeholder="endpoint.pathPlaceholder" maxlength="500">
+                    <p class="hint endpoint-path-hint" data-i18n="endpoint.pathHint">Путь от корня сайта. Например, /api/health.</p>
+                </div>
+                <div class="form-group">
+                    <label data-i18n="endpoint.name">Название</label>
+                    <input type="text" id="endpoint-name-input" placeholder="Health check" data-i18n-placeholder="endpoint.namePlaceholder" maxlength="200">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label data-i18n="endpoint.interval">Интервал проверки (сек) — необязательно</label>
+                        <input type="number" id="endpoint-interval-input" min="5" max="3600" placeholder="По умолчанию" data-i18n-placeholder="endpoint.intervalPlaceholder">
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="endpoint.expectedStatus">Ожидаемый HTTP-код</label>
+                        <input type="number" id="endpoint-status-code-input" min="100" max="599" placeholder="2xx–3xx" data-i18n-placeholder="endpoint.expectedStatusPlaceholder">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label data-i18n="endpoint.expectedBody">Текст в теле ответа — необязательно</label>
+                    <input type="text" id="endpoint-body-input" maxlength="1000" placeholder="status: ok" data-i18n-placeholder="endpoint.expectedBodyPlaceholder">
+                </div>
+                <button id="confirm-endpoint-btn" class="btn-primary" data-i18n="common.save">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
     <div id="modal" class="modal hidden">
         <div class="modal-content modal-wide">
             <div class="modal-header">
                 <h2 id="modal-title"></h2>
                 <div class="modal-header-actions">
                     <button id="edit-site-btn" class="modal-action-btn hidden" data-i18n="detail.edit">Редактировать</button>
+                    <button id="edit-endpoint-btn" class="modal-action-btn hidden" data-i18n="detail.edit">Редактировать</button>
                     <button class="modal-close" data-close="modal">&times;</button>
                 </div>
             </div>

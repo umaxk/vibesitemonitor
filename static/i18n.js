@@ -25,6 +25,10 @@
                 settingsTitle: 'Настройки',
                 accountTitle: 'Аккаунт'
             },
+            mode: {
+                sites: 'Сайты',
+                endpoints: 'Эндпоинты'
+            },
             filter: {
                 statusAll: 'Все статусы',
                 statusUp: 'Доступны',
@@ -49,7 +53,8 @@
                 up: 'Доступен',
                 down: 'Недоступен',
                 paused: 'Пауза',
-                unknown: 'Нет данных'
+                unknown: 'Нет данных',
+                sitePaused: 'Сайт на паузе'
             },
             card: {
                 checkTitle: 'Проверить сейчас',
@@ -59,7 +64,8 @@
                 neverChecked: 'Ещё не проверялся',
                 everyNsec: 'Каждые {n} сек',
                 uptime24: '24ч: {value}',
-                badgePublic: 'Публичный'
+                badgePublic: 'Публичный',
+                endpoints: 'Эндпоинты: {down}/{total}'
             },
             ssl: {
                 column: 'SSL',
@@ -82,6 +88,7 @@
                 statUptime: 'Аптайм',
                 statChecks: 'Проверок',
                 statAvgLatency: 'Средний отклик',
+                statExpectedStatus: 'Ожидаемый код',
                 chartLatency: 'Задержка',
                 chartUptime: 'Аптайм',
                 chartIncidents: 'Инциденты',
@@ -162,6 +169,31 @@
                 public: 'Показывать на публичной статус-странице',
                 confirm: 'Добавить'
             },
+            endpoint: {
+                add: 'Добавить эндпоинт',
+                edit: 'Редактировать эндпоинт',
+                searchPlaceholder: 'Поиск эндпоинта...',
+                siteAll: 'Все сайты',
+                site: 'Сайт *',
+                path: 'Путь *',
+                pathPlaceholder: '/api/health',
+                pathHint: 'Путь от корня сайта. Например, /api/health.',
+                name: 'Название',
+                namePlaceholder: 'Health check',
+                interval: 'Интервал проверки (сек) — необязательно',
+                intervalPlaceholder: 'По умолчанию',
+                expectedStatus: 'Ожидаемый HTTP-код',
+                expectedStatusPlaceholder: '2xx–3xx',
+                expectedBody: 'Текст в теле ответа — необязательно',
+                expectedBodyPlaceholder: 'status: ok',
+                empty: 'Эндпоинтов пока нет. Нажмите +, чтобы добавить.',
+                emptyFiltered: 'Ничего не найдено',
+                blockTitle: 'Эндпоинты сайта',
+                addForSite: 'Добавить эндпоинт',
+                noneForSite: 'У сайта пока нет эндпоинтов.',
+                sitePaused: 'Сайт на паузе',
+                expected: 'Ожидается: {value}'
+            },
             toast: {
                 checking: 'Проверяем сайт...',
                 checked: 'Проверка завершена',
@@ -172,7 +204,14 @@
                 noteSaved: 'Заметка сохранена',
                 siteUpdated: 'Сайт обновлён',
                 siteAdded: 'Сайт добавлен',
+                endpointAdded: 'Эндпоинт добавлен',
+                endpointUpdated: 'Эндпоинт обновлён',
+                endpointDeleted: 'Эндпоинт удалён',
+                endpointPaused: 'Эндпоинт на паузе',
+                endpointResumed: 'Эндпоинт возобновлён',
                 needUrl: 'Укажите URL',
+                needPath: 'Укажите путь эндпоинта',
+                needSite: 'Выберите сайт',
                 needChatId: 'Укажите chat_id',
                 needLoginPass: 'Укажите логин и пароль',
                 settingsSaved: 'Настройки сохранены',
@@ -188,6 +227,7 @@
             },
             confirm: {
                 deleteSite: 'Удалить {name}? История проверок и инциденты также будут удалены.',
+                deleteEndpoint: 'Удалить эндпоинт {name}? История проверок и инциденты также будут удалены.',
                 logoutAll: 'Завершить все активные сессии, включая текущую?',
                 deleteRecipient: 'Удалить получателя?',
                 deleteUser: 'Удалить пользователя?'
@@ -200,6 +240,9 @@
                 generic: 'Ошибка запроса',
                 siteNotFound: 'Сайт не найден',
                 siteExists: 'Такой сайт уже есть',
+                endpointNotFound: 'Эндпоинт не найден',
+                endpointExists: 'Такой эндпоинт уже есть у этого сайта',
+                invalidEndpointPath: 'Некорректный путь эндпоинта',
                 privateAddress: 'URL указывает на частный или зарезервированный адрес',
                 invalidRange: 'Неверный период',
                 incidentNotFound: 'Инцидент не найден',
@@ -247,6 +290,10 @@
                 settingsTitle: 'Settings',
                 accountTitle: 'Account'
             },
+            mode: {
+                sites: 'Sites',
+                endpoints: 'Endpoints'
+            },
             filter: {
                 statusAll: 'All statuses',
                 statusUp: 'Reachable',
@@ -271,7 +318,8 @@
                 up: 'Up',
                 down: 'Down',
                 paused: 'Paused',
-                unknown: 'No data'
+                unknown: 'No data',
+                sitePaused: 'Site paused'
             },
             card: {
                 checkTitle: 'Check now',
@@ -281,7 +329,8 @@
                 neverChecked: 'Not checked yet',
                 everyNsec: 'Every {n} sec',
                 uptime24: '24h: {value}',
-                badgePublic: 'Public'
+                badgePublic: 'Public',
+                endpoints: 'Endpoints: {down}/{total}'
             },
             ssl: {
                 column: 'SSL',
@@ -304,6 +353,7 @@
                 statUptime: 'Uptime',
                 statChecks: 'Checks',
                 statAvgLatency: 'Avg. response',
+                statExpectedStatus: 'Expected code',
                 chartLatency: 'Latency',
                 chartUptime: 'Uptime',
                 chartIncidents: 'Incidents',
@@ -384,6 +434,31 @@
                 public: 'Show on the public status page',
                 confirm: 'Add'
             },
+            endpoint: {
+                add: 'Add endpoint',
+                edit: 'Edit endpoint',
+                searchPlaceholder: 'Search endpoints...',
+                siteAll: 'All sites',
+                site: 'Site *',
+                path: 'Path *',
+                pathPlaceholder: '/api/health',
+                pathHint: 'Path from the site root. For example, /api/health.',
+                name: 'Name',
+                namePlaceholder: 'Health check',
+                interval: 'Check interval (sec) — optional',
+                intervalPlaceholder: 'Default',
+                expectedStatus: 'Expected HTTP code',
+                expectedStatusPlaceholder: '2xx–3xx',
+                expectedBody: 'Text in the response body — optional',
+                expectedBodyPlaceholder: 'status: ok',
+                empty: 'No endpoints yet. Click + to add one.',
+                emptyFiltered: 'Nothing found',
+                blockTitle: 'Site endpoints',
+                addForSite: 'Add endpoint',
+                noneForSite: 'This site has no endpoints yet.',
+                sitePaused: 'Site paused',
+                expected: 'Expected: {value}'
+            },
             toast: {
                 checking: 'Checking site...',
                 checked: 'Check completed',
@@ -394,7 +469,14 @@
                 noteSaved: 'Note saved',
                 siteUpdated: 'Site updated',
                 siteAdded: 'Site added',
+                endpointAdded: 'Endpoint added',
+                endpointUpdated: 'Endpoint updated',
+                endpointDeleted: 'Endpoint deleted',
+                endpointPaused: 'Endpoint paused',
+                endpointResumed: 'Endpoint resumed',
                 needUrl: 'Enter the URL',
+                needPath: 'Enter the endpoint path',
+                needSite: 'Select a site',
                 needChatId: 'Enter chat_id',
                 needLoginPass: 'Enter username and password',
                 settingsSaved: 'Settings saved',
@@ -410,6 +492,7 @@
             },
             confirm: {
                 deleteSite: 'Delete {name}? Check history and incidents will also be deleted.',
+                deleteEndpoint: 'Delete endpoint {name}? Check history and incidents will also be deleted.',
                 logoutAll: 'End all active sessions, including the current one?',
                 deleteRecipient: 'Delete recipient?',
                 deleteUser: 'Delete user?'
@@ -422,6 +505,9 @@
                 generic: 'Request failed',
                 siteNotFound: 'Site not found',
                 siteExists: 'Site already exists',
+                endpointNotFound: 'Endpoint not found',
+                endpointExists: 'This endpoint already exists for the site',
+                invalidEndpointPath: 'Invalid endpoint path',
                 privateAddress: 'URL points to a private or reserved address',
                 invalidRange: 'Invalid range',
                 incidentNotFound: 'Incident not found',
@@ -521,6 +607,9 @@
     const API_ERROR_MAP = {
         'Site not found': 'error.siteNotFound',
         'Site already exists': 'error.siteExists',
+        'Endpoint not found': 'error.endpointNotFound',
+        'Endpoint already exists': 'error.endpointExists',
+        'Invalid endpoint path': 'error.invalidEndpointPath',
         'URL points to a private or reserved address': 'error.privateAddress',
         'Invalid range': 'error.invalidRange',
         'Incident not found': 'error.incidentNotFound',

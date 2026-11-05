@@ -66,6 +66,58 @@ CREATE INDEX IF NOT EXISTS idx_incidents_site
 CREATE INDEX IF NOT EXISTS idx_incidents_open
     ON incidents(site_id, ended_at);
 
+CREATE TABLE IF NOT EXISTS endpoints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    site_id INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    path TEXT NOT NULL,
+    check_interval_seconds INTEGER,
+    expected_status INTEGER,
+    expected_body TEXT,
+    paused INTEGER NOT NULL DEFAULT 0,
+    last_status TEXT NOT NULL DEFAULT 'unknown',
+    last_check REAL,
+    last_http_code INTEGER,
+    last_latency_ms REAL,
+    last_error TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_endpoints_site_path
+    ON endpoints(site_id, path);
+
+CREATE TABLE IF NOT EXISTS endpoint_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    endpoint_id INTEGER NOT NULL REFERENCES endpoints(id) ON DELETE CASCADE,
+    timestamp REAL NOT NULL,
+    status TEXT NOT NULL,
+    http_code INTEGER,
+    latency_ms REAL,
+    error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_endpoint_checks_endpoint_ts
+    ON endpoint_checks(endpoint_id, timestamp);
+
+CREATE TABLE IF NOT EXISTS endpoint_incidents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    endpoint_id INTEGER NOT NULL REFERENCES endpoints(id) ON DELETE CASCADE,
+    started_at REAL NOT NULL,
+    ended_at REAL,
+    last_error TEXT,
+    acknowledged_at REAL,
+    note TEXT,
+    notified_started INTEGER NOT NULL DEFAULT 0,
+    notified_recovered INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_endpoint_incidents_endpoint
+    ON endpoint_incidents(endpoint_id, started_at);
+
+CREATE INDEX IF NOT EXISTS idx_endpoint_incidents_open
+    ON endpoint_incidents(endpoint_id, ended_at);
+
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL COLLATE NOCASE UNIQUE,

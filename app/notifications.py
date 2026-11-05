@@ -18,6 +18,8 @@ MESSAGES = {
         "ssl_expired_at": "SSL-сертификат истёк {time}",
         "down_title": "<b>{name}</b> недоступен",
         "up_title": "<b>{name}</b> снова доступен",
+        "endpoint_down_title": "<b>{site}</b>: эндпоинт {endpoint} недоступен",
+        "endpoint_up_title": "<b>{site}</b>: эндпоинт {endpoint} снова доступен",
         "ssl_title": "<b>{name}</b>: срок действия SSL-сертификата истёк",
         "error": "Ошибка: {error}",
         "time": "Время: {time}",
@@ -30,6 +32,8 @@ MESSAGES = {
         "ssl_expired_at": "SSL certificate expired {time}",
         "down_title": "<b>{name}</b> is down",
         "up_title": "<b>{name}</b> is back up",
+        "endpoint_down_title": "<b>{site}</b>: endpoint {endpoint} is down",
+        "endpoint_up_title": "<b>{site}</b>: endpoint {endpoint} is back up",
         "ssl_title": "<b>{name}</b>: SSL certificate has expired",
         "error": "Error: {error}",
         "time": "Time: {time}",
@@ -147,6 +151,37 @@ async def notify_site_up(site: dict, event: dict | None = None) -> None:
             _msg("downtime").format(duration=_format_duration(event["duration_seconds"]))
         )
     lines.append(_msg("time").format(time=_format_time(site.get("last_check"))))
+    await _safe_send("\n".join(lines))
+
+
+async def notify_endpoint_down(endpoint: dict, event: dict | None = None) -> None:
+    lines = [
+        _msg("endpoint_down_title").format(
+            site=html.escape(str(endpoint.get("site_name") or "")),
+            endpoint=html.escape(str(endpoint.get("name") or endpoint.get("path") or "")),
+        ),
+        f"URL: {html.escape(str(endpoint.get('url') or ''))}",
+        _msg("error").format(
+            error=html.escape(str(endpoint.get("last_error") or "unknown"))
+        ),
+        _msg("time").format(time=_format_time(endpoint.get("last_check"))),
+    ]
+    await _safe_send("\n".join(lines))
+
+
+async def notify_endpoint_up(endpoint: dict, event: dict | None = None) -> None:
+    lines = [
+        _msg("endpoint_up_title").format(
+            site=html.escape(str(endpoint.get("site_name") or "")),
+            endpoint=html.escape(str(endpoint.get("name") or endpoint.get("path") or "")),
+        ),
+        f"URL: {html.escape(str(endpoint.get('url') or ''))}",
+    ]
+    if event and event.get("duration_seconds") is not None:
+        lines.append(
+            _msg("downtime").format(duration=_format_duration(event["duration_seconds"]))
+        )
+    lines.append(_msg("time").format(time=_format_time(endpoint.get("last_check"))))
     await _safe_send("\n".join(lines))
 
 

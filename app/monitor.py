@@ -10,6 +10,7 @@ logging_config.setup()
 logger = logging.getLogger("monitor")
 
 REQUEST_HEADERS = {"User-Agent": "VibeMonitor/1.0"}
+BODY_CHECK_LIMIT = 256 * 1024
 
 
 class Monitor:
@@ -21,6 +22,9 @@ class Monitor:
         self._locks: dict[int, asyncio.Lock] = {}
         self._inflight: set[int] = set()
         self._ssl_inflight: set[int] = set()
+        self._endpoint_next_check: dict[int, float] = {}
+        self._endpoint_locks: dict[int, asyncio.Lock] = {}
+        self._endpoint_inflight: set[int] = set()
         self._default_interval = 60
         self._timeout = 10
         self._last_loop: float | None = None
@@ -81,6 +85,79 @@ class Monitor:
                 "error": f"{type(exc).__name__}: {exc}",
             }
 
+    async def _check_endpoint(self, endpoint: dict) -> dict:
+        url = endpoint["url"]
+        start = time.time()
+        down = {
+            "timestamp": start,
+            "status": "down",
+            "http_code": None,
+            "latency_ms": None,
+            "error": None,
+        }
+        try:
+            await net_guard.check_url_async(url)
+        except net_guard.DisallowedHostError as exc:
+            down["error"] = str(exc)
+            return down
+
+        expected_status = endpoint.get("expected_status")
+        expected_body = (endpoint.get("expected_body") or "").strip()
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._timeout,
+                follow_redirects=True,
+                headers=REQUEST_HEADERS,
+            ) as client:
+                async with client.stream("GET", url) as response:
+                    status_code = response.status_code
+                    body = ""
+                    if expected_body:
+                        chunks = []
+                        size = 0
+                        async for chunk in response.aiter_bytes():
+                            chunks.append(chunk)
+                            size += len(chunk)
+                            if size >= BODY_CHECK_LIMIT:
+                                break
+                        body = b"".join(chunks).decode("utf-8", errors="replace")
+            latency = (time.time() - start) * 1000
+            if expected_status is None:
+                ok = 200 <= status_code < 400
+            else:
+                ok = status_code == expected_status
+            error = None
+            if not ok:
+                error = f"HTTP {status_code}"
+                if expected_status is not None:
+                    error += f" (expected {expected_status})"
+            elif expected_body and expected_body not in body:
+                ok = False
+                error = "Response body does not contain expected text"
+            return {
+                "timestamp": start,
+                "status": "up" if ok else "down",
+                "http_code": status_code,
+                "latency_ms": round(latency, 1),
+                "error": error,
+            }
+        except httpx.TimeoutException:
+            return {
+                "timestamp": start,
+                "status": "down",
+                "http_code": None,
+                "latency_ms": None,
+                "error": "Timeout",
+            }
+        except Exception as exc:  # noqa: BLE001 - one bad endpoint must not stop the loop
+            return {
+                "timestamp": start,
+                "status": "down",
+                "http_code": None,
+                "latency_ms": None,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
     def _lock_for(self, site_id: int) -> asyncio.Lock:
         lock = self._locks.get(site_id)
         if lock is None:
@@ -120,6 +197,57 @@ class Monitor:
             finally:
                 self._inflight.discard(site_id)
 
+    def _endpoint_lock_for(self, endpoint_id: int) -> asyncio.Lock:
+        lock = self._endpoint_locks.get(endpoint_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._endpoint_locks[endpoint_id] = lock
+        return lock
+
+    async def _run_endpoint_check(self, endpoint: dict) -> dict | None:
+        endpoint_id = endpoint["id"]
+        async with self._endpoint_lock_for(endpoint_id):
+            try:
+                result = await self._check_endpoint(endpoint)
+                event = repository.record_endpoint_check(endpoint_id, result)
+                updated = repository.get_endpoint(endpoint_id)
+                if not updated:
+                    return None
+                if event:
+                    if event["type"] == "down":
+                        logger.warning(
+                            "Endpoint DOWN: %s%s | error=%s",
+                            updated["site_name"],
+                            updated["path"],
+                            updated.get("last_error"),
+                            extra={
+                                "endpoint_id": endpoint_id,
+                                "incident_id": event["incident_id"],
+                            },
+                        )
+                        await notifications.notify_endpoint_down(updated, event)
+                    elif event["type"] == "up":
+                        logger.info(
+                            "Endpoint UP: %s%s | duration=%ss",
+                            updated["site_name"],
+                            updated["path"],
+                            event.get("duration_seconds"),
+                            extra={
+                                "endpoint_id": endpoint_id,
+                                "incident_id": event["incident_id"],
+                            },
+                        )
+                        await notifications.notify_endpoint_up(updated, event)
+                interval = (
+                    updated.get("check_interval_seconds") or self._default_interval
+                )
+                self._endpoint_next_check[endpoint_id] = (
+                    time.time() + max(5, interval)
+                )
+                return updated
+            finally:
+                self._endpoint_inflight.discard(endpoint_id)
+
     async def _run_ssl_check(self, site: dict) -> None:
         site_id = site["id"]
         try:
@@ -158,12 +286,19 @@ class Monitor:
         self._timeout = int(settings.get("timeout_seconds", 10))
         ssl_interval = int(settings.get("ssl_check_interval_seconds", 21600))
         sites = repository.list_sites()
+        endpoints = repository.list_endpoints(with_uptime=False)
 
         alive_ids = {site["id"] for site in sites}
         for site_id in list(self._next_check):
             if site_id not in alive_ids:
                 self._next_check.pop(site_id, None)
                 self._locks.pop(site_id, None)
+
+        alive_endpoint_ids = {endpoint["id"] for endpoint in endpoints}
+        for endpoint_id in list(self._endpoint_next_check):
+            if endpoint_id not in alive_endpoint_ids:
+                self._endpoint_next_check.pop(endpoint_id, None)
+                self._endpoint_locks.pop(endpoint_id, None)
 
         now = time.time()
         tasks = []
@@ -187,6 +322,20 @@ class Monitor:
                 self._ssl_inflight.add(site_id)
                 tasks.append(self._run_ssl_check(site))
 
+        for endpoint in endpoints:
+            endpoint_id = endpoint["id"]
+            if endpoint["paused"] or endpoint["site_paused"]:
+                self._endpoint_next_check.pop(endpoint_id, None)
+                continue
+            if endpoint_id not in self._endpoint_next_check:
+                self._endpoint_next_check[endpoint_id] = now
+            if (
+                now >= self._endpoint_next_check[endpoint_id]
+                and endpoint_id not in self._endpoint_inflight
+            ):
+                self._endpoint_inflight.add(endpoint_id)
+                tasks.append(self._run_endpoint_check(endpoint))
+
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -198,9 +347,13 @@ class Monitor:
                 logger.warning("Cleanup error: %s", exc)
 
     def _next_wait(self) -> float:
-        if not self._next_check:
+        next_times = [
+            *self._next_check.values(),
+            *self._endpoint_next_check.values(),
+        ]
+        if not next_times:
             return max(1.0, float(self._default_interval))
-        return max(1.0, min(self._next_check.values()) - time.time())
+        return max(1.0, min(next_times) - time.time())
 
     async def _loop(self) -> None:
         while not self._stop_event.is_set():
@@ -234,6 +387,25 @@ class Monitor:
     def site_removed(self, site_id: int) -> None:
         self._next_check.pop(site_id, None)
         self._locks.pop(site_id, None)
+        self._wake_event.set()
+
+    async def check_endpoint_now(self, endpoint_id: int) -> dict | None:
+        endpoint = repository.get_endpoint(endpoint_id)
+        if not endpoint:
+            return None
+        self._endpoint_inflight.add(endpoint_id)
+        self._endpoint_next_check[endpoint_id] = time.time()
+        updated = await self._run_endpoint_check(endpoint)
+        self._wake_event.set()
+        return updated
+
+    def endpoint_changed(self, endpoint_id: int) -> None:
+        self._endpoint_next_check[endpoint_id] = time.time()
+        self._wake_event.set()
+
+    def endpoint_removed(self, endpoint_id: int) -> None:
+        self._endpoint_next_check.pop(endpoint_id, None)
+        self._endpoint_locks.pop(endpoint_id, None)
         self._wake_event.set()
 
     def start(self) -> None:

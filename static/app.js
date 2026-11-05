@@ -1,20 +1,32 @@
 const state = {
     user: null,
     sites: [],
+    endpoints: [],
     meta: {},
     settings: null,
+    mode: 'sites',
     detailSiteId: null,
+    detailEndpointId: null,
     detailRange: '24h',
+    detailType: 'site',
     detailSite: null,
+    detailEndpoint: null,
     detailStats: null,
     detailIncidents: [],
+    siteEndpoints: [],
     charts: [],
     editingSiteId: null,
+    editingEndpointId: null,
     filters: {
         search: '',
         status: 'all',
         tag: 'all',
         sort: 'name'
+    },
+    endpointFilters: {
+        search: '',
+        site: 'all',
+        status: 'all'
     }
 };
 
@@ -142,8 +154,8 @@ function toggleTheme() {
     const light = !document.body.classList.contains('light');
     localStorage.setItem('vibemonitor-theme', light ? 'light' : 'dark');
     applyTheme();
-    if (state.detailSite) {
-        renderCharts(state.detailSite, state.detailStats, state.detailIncidents);
+    if (state.detailStats) {
+        renderCharts(state.detailSite || state.detailEndpoint || {}, state.detailStats, state.detailIncidents);
     }
 }
 
@@ -212,6 +224,21 @@ function siteStatus(site) {
     if (site.last_status === 'up') return { key: 'up', label: I18n.t('status.up') };
     if (site.last_status === 'down') return { key: 'down', label: I18n.t('status.down') };
     return { key: 'unknown', label: I18n.t('status.unknown') };
+}
+
+function endpointStatus(endpoint) {
+    if (endpoint.paused) return { key: 'paused', label: I18n.t('status.paused') };
+    if (endpoint.site_paused) return { key: 'paused', label: I18n.t('status.sitePaused') };
+    if (endpoint.last_status === 'up') return { key: 'up', label: I18n.t('status.up') };
+    if (endpoint.last_status === 'down') return { key: 'down', label: I18n.t('status.down') };
+    return { key: 'unknown', label: I18n.t('status.unknown') };
+}
+
+function endpointExpected(endpoint) {
+    const parts = [];
+    if (endpoint.expected_status) parts.push(`HTTP ${endpoint.expected_status}`);
+    if (endpoint.expected_body) parts.push(`"${endpoint.expected_body}"`);
+    return parts.length ? I18n.t('endpoint.expected', { value: parts.join(' + ') }) : '';
 }
 
 function sslBadge(site) {
@@ -297,6 +324,7 @@ function renderSites() {
                 <div class="site-badges">
                     ${site.paused ? `<span class="badge">${escapeHtml(I18n.t('status.paused'))}</span>` : ''}
                     ${site.public ? `<span class="badge badge-public">${escapeHtml(I18n.t('card.badgePublic'))}</span>` : ''}
+                    ${site.endpoints_count ? `<span class="badge ${site.endpoints_down ? 'badge-danger' : 'badge-ok'}">${escapeHtml(I18n.t('card.endpoints', { down: site.endpoints_down || 0, total: site.endpoints_count }))}</span>` : ''}
                     ${sslBadge(site)}
                 </div>
                 ${tags ? `<div class="tags">${tags}</div>` : ''}
@@ -337,7 +365,152 @@ async function loadSites() {
     $('#add-site-btn').classList.toggle('hidden', state.user?.role !== 'admin');
     $('#settings-btn').classList.toggle('hidden', state.user?.role !== 'admin');
     populateTagFilter();
+    populateEndpointSiteFilter();
     renderSites();
+}
+
+function populateEndpointSiteFilter() {
+    const select = $('#endpoint-site-filter');
+    if (!select) return;
+    const current = state.endpointFilters.site;
+    select.innerHTML = `<option value="all">${escapeHtml(I18n.t('endpoint.siteAll'))}</option>`
+        + state.sites.map((site) => `<option value="${site.id}">${escapeHtml(site.name || site.url)}</option>`).join('');
+    if (state.sites.some((site) => String(site.id) === String(current))) {
+        select.value = current;
+    } else {
+        state.endpointFilters.site = 'all';
+        select.value = 'all';
+    }
+}
+
+async function loadEndpoints() {
+    const data = await api('/api/endpoints');
+    state.endpoints = data.endpoints;
+    populateEndpointSiteFilter();
+    renderEndpoints();
+}
+
+function renderEndpoints() {
+    const list = $('#endpoints-list');
+    const search = state.endpointFilters.search.toLowerCase();
+    const filtered = state.endpoints
+        .filter((endpoint) => {
+            const matchesSearch = !search
+                || (endpoint.name || '').toLowerCase().includes(search)
+                || endpoint.path.toLowerCase().includes(search)
+                || (endpoint.site_name || '').toLowerCase().includes(search);
+            const matchesSite = state.endpointFilters.site === 'all'
+                || String(endpoint.site_id) === String(state.endpointFilters.site);
+            const matchesStatus = state.endpointFilters.status === 'all'
+                || endpointStatus(endpoint).key === state.endpointFilters.status;
+            return matchesSearch && matchesSite && matchesStatus;
+        })
+        .sort((a, b) => {
+            const siteDiff = (a.site_name || '').localeCompare(b.site_name || '', I18n.locale());
+            if (siteDiff !== 0) return siteDiff;
+            return (a.name || a.path).localeCompare(b.name || b.path, I18n.locale());
+        });
+
+    if (!filtered.length) {
+        const key = state.endpoints.length ? 'endpoint.emptyFiltered' : 'endpoint.empty';
+        list.innerHTML = `<div class="empty-state">${escapeHtml(I18n.t(key))}</div>`;
+        return;
+    }
+
+    const admin = state.user?.role === 'admin';
+    list.innerHTML = filtered.map((endpoint) => {
+        const status = endpointStatus(endpoint);
+        const expected = endpointExpected(endpoint);
+        const actions = admin ? `
+            <div class="card-actions">
+                <button class="btn-icon small" data-endpoint-action="check" title="${escapeHtml(I18n.t('card.checkTitle'))}">↻</button>
+                <button class="btn-icon small" data-endpoint-action="pause" title="${escapeHtml(I18n.t(endpoint.paused ? 'card.resumeTitle' : 'card.pauseTitle'))}">${endpoint.paused ? '▶' : '⏸'}</button>
+            </div>` : '';
+        return `
+            <article class="endpoint-card status-${status.key}" data-endpoint-id="${endpoint.id}">
+                <div class="endpoint-card-top">
+                    <div class="endpoint-card-heading">
+                        <h3>${escapeHtml(endpoint.name || endpoint.path)}</h3>
+                        <span class="endpoint-path">${escapeHtml(endpoint.path)}</span>
+                        <span class="endpoint-site">${escapeHtml(endpoint.site_name || '')}</span>
+                    </div>
+                    <span class="status-pill ${status.key}"><span class="dot"></span>${status.label}</span>
+                </div>
+                <div class="site-meta">
+                    <span>${endpoint.last_check ? escapeHtml(I18n.t('card.checkedAt', { ago: formatAgo(endpoint.last_check) })) : escapeHtml(I18n.t('card.neverChecked'))}</span>
+                    <span>HTTP ${endpoint.last_http_code ?? '—'}</span>
+                    <span>${escapeHtml(formatLatency(endpoint.last_latency_ms))}</span>
+                    <span>${escapeHtml(I18n.t('card.uptime24', { value: formatPercent(endpoint.uptime_24h) }))}</span>
+                </div>
+                <div class="site-badges">
+                    ${endpoint.paused ? `<span class="badge">${escapeHtml(I18n.t('status.paused'))}</span>` : ''}
+                    ${endpoint.site_paused ? `<span class="badge badge-warning">${escapeHtml(I18n.t('status.sitePaused'))}</span>` : ''}
+                    ${expected ? `<span class="badge">${escapeHtml(expected)}</span>` : ''}
+                </div>
+                ${endpoint.last_status === 'down' && endpoint.last_error ? `<div class="site-error">${escapeHtml(endpoint.last_error)}</div>` : ''}
+                <div class="site-card-footer">
+                    <span class="hint">${endpoint.check_interval_seconds ? escapeHtml(I18n.t('card.everyNsec', { n: endpoint.check_interval_seconds })) : ''}</span>
+                    ${actions}
+                </div>
+            </article>`;
+    }).join('');
+}
+
+async function handleEndpointCardAction(action, endpointId) {
+    const endpoint = state.endpoints.find((item) => item.id === endpointId);
+    if (!endpoint) return;
+    try {
+        if (action === 'check') {
+            toast(I18n.t('toast.checking'), 'info');
+            await api(`/api/endpoints/${endpointId}/check`, { method: 'POST' });
+            toast(I18n.t('toast.checked'), 'success');
+        } else if (action === 'pause') {
+            await api(`/api/endpoints/${endpointId}/pause`, {
+                method: 'POST',
+                body: { paused: !endpoint.paused }
+            });
+            toast(endpoint.paused ? I18n.t('toast.endpointResumed') : I18n.t('toast.endpointPaused'), 'success');
+        }
+        await loadEndpoints();
+        await loadSites();
+        if (state.detailType === 'endpoint' && state.detailEndpointId === endpointId) {
+            await loadEndpointDetail();
+        } else if (state.detailType === 'site' && state.detailSiteId) {
+            await loadDetail();
+        }
+    } catch (error) {
+        toastError(error);
+    }
+}
+
+function renderSiteEndpoints(endpoints) {
+    const admin = state.user?.role === 'admin';
+    const rows = endpoints.length ? endpoints.map((endpoint) => {
+        const status = endpointStatus(endpoint);
+        return `
+            <div class="endpoint-row" data-site-endpoint-id="${endpoint.id}">
+                <div class="endpoint-row-main">
+                    <strong>${escapeHtml(endpoint.name || endpoint.path)}</strong>
+                    <span class="hint">${escapeHtml(endpoint.path)}</span>
+                </div>
+                <span class="status-pill ${status.key}"><span class="dot"></span>${status.label}</span>
+                <span class="hint">HTTP ${endpoint.last_http_code ?? '—'}</span>
+                <span class="hint">${escapeHtml(formatLatency(endpoint.last_latency_ms))}</span>
+                ${admin ? `
+                    <div class="card-actions">
+                        <button class="btn-icon small" data-site-endpoint-action="check" data-endpoint-id="${endpoint.id}" title="${escapeHtml(I18n.t('card.checkTitle'))}">↻</button>
+                        <button class="btn-icon small" data-site-endpoint-action="pause" data-endpoint-id="${endpoint.id}" title="${escapeHtml(I18n.t(endpoint.paused ? 'card.resumeTitle' : 'card.pauseTitle'))}">${endpoint.paused ? '▶' : '⏸'}</button>
+                    </div>` : ''}
+            </div>`;
+    }).join('') : `<p class="hint">${escapeHtml(I18n.t('endpoint.noneForSite'))}</p>`;
+    return `
+        <div class="chart-block site-endpoints-block">
+            <div class="site-endpoints-head">
+                <h3>${escapeHtml(I18n.t('endpoint.blockTitle'))}</h3>
+                ${admin ? `<button class="btn-secondary small" data-detail-action="add-endpoint">${escapeHtml(I18n.t('endpoint.addForSite'))}</button>` : ''}
+            </div>
+            <div class="endpoint-rows">${rows}</div>
+        </div>`;
 }
 
 async function handleCardAction(action, siteId) {
@@ -442,7 +615,7 @@ function renderCheckLog(checks) {
         </details>`;
 }
 
-function renderDetail(site, stats, incidents, checks) {
+function renderDetail(site, stats, incidents, checks, endpoints = []) {
     const status = siteStatus(site);
     const admin = state.user?.role === 'admin';
     const body = $('#modal-body');
@@ -478,6 +651,7 @@ function renderDetail(site, stats, incidents, checks) {
             <h3>${escapeHtml(I18n.t('detail.chartUptime'))}</h3>
             <div class="chart-wrap"><canvas id="uptime-chart"></canvas></div>
         </div>
+        ${renderSiteEndpoints(endpoints)}
         <div class="chart-block">
             <h3>${escapeHtml(I18n.t('detail.chartIncidents'))}</h3>
             ${renderIncidents(incidents)}
@@ -595,41 +769,151 @@ async function loadDetail() {
     const siteId = state.detailSiteId;
     if (!siteId) return;
     try {
-        const [data, checksData] = await Promise.all([
+        const [data, checksData, endpointsData] = await Promise.all([
             api(`/api/sites/${siteId}/stats?range=${encodeURIComponent(state.detailRange)}`),
-            api(`/api/sites/${siteId}/checks?limit=100`)
+            api(`/api/sites/${siteId}/checks?limit=100`),
+            api(`/api/endpoints?site_id=${siteId}`)
         ]);
         if (state.detailSiteId !== siteId) return;
+        state.detailType = 'site';
+        state.detailEndpoint = null;
+        state.detailEndpointId = null;
         state.detailSite = data.site;
         state.detailStats = data.stats;
         state.detailIncidents = data.incidents;
+        state.siteEndpoints = endpointsData.endpoints;
         const site = data.site;
         $('#modal-title').textContent = site.name || site.url;
         $('#edit-site-btn').classList.toggle('hidden', state.user?.role !== 'admin');
-        renderDetail(site, data.stats, data.incidents, checksData.checks);
+        $('#edit-endpoint-btn').classList.add('hidden');
+        renderDetail(site, data.stats, data.incidents, checksData.checks, endpointsData.endpoints);
     } catch (error) {
         toastError(error);
     }
 }
 
 async function openSiteDetail(siteId) {
+    state.detailType = 'site';
     state.detailSiteId = siteId;
+    state.detailEndpointId = null;
+    state.detailEndpoint = null;
     state.detailRange = '24h';
     state.detailSite = state.sites.find((site) => site.id === siteId) || null;
     state.detailStats = null;
     state.detailIncidents = [];
+    state.siteEndpoints = [];
     if (state.detailSite) {
         $('#modal-title').textContent = state.detailSite.name || state.detailSite.url;
     }
     $('#edit-site-btn').classList.add('hidden');
+    $('#edit-endpoint-btn').classList.add('hidden');
     $('#modal-body').innerHTML = `<p class="hint">${escapeHtml(I18n.t('common.loading'))}</p>`;
     openModal('modal');
     await loadDetail();
 }
 
+async function openEndpointDetail(endpointId) {
+    state.detailType = 'endpoint';
+    state.detailEndpointId = endpointId;
+    state.detailSiteId = null;
+    state.detailRange = '24h';
+    state.detailEndpoint = state.endpoints.find((endpoint) => endpoint.id === endpointId) || null;
+    state.detailSite = null;
+    state.detailStats = null;
+    state.detailIncidents = [];
+    if (state.detailEndpoint) {
+        $('#modal-title').textContent = state.detailEndpoint.name || state.detailEndpoint.path;
+    }
+    $('#edit-site-btn').classList.add('hidden');
+    $('#edit-endpoint-btn').classList.toggle('hidden', state.user?.role !== 'admin');
+    $('#modal-body').innerHTML = `<p class="hint">${escapeHtml(I18n.t('common.loading'))}</p>`;
+    openModal('modal');
+    await loadEndpointDetail();
+}
+
+async function loadEndpointDetail() {
+    const endpointId = state.detailEndpointId;
+    if (!endpointId) return;
+    try {
+        const [data, checksData] = await Promise.all([
+            api(`/api/endpoints/${endpointId}/stats?range=${encodeURIComponent(state.detailRange)}`),
+            api(`/api/endpoints/${endpointId}/checks?limit=100`)
+        ]);
+        if (state.detailEndpointId !== endpointId) return;
+        state.detailEndpoint = data.endpoint;
+        state.detailStats = data.stats;
+        state.detailIncidents = data.incidents;
+        $('#modal-title').textContent = data.endpoint.name || data.endpoint.path;
+        $('#edit-site-btn').classList.add('hidden');
+        $('#edit-endpoint-btn').classList.toggle('hidden', state.user?.role !== 'admin');
+        renderEndpointDetail(data.endpoint, data.stats, data.incidents, checksData.checks);
+    } catch (error) {
+        toastError(error);
+    }
+}
+
+function renderEndpointDetail(endpoint, stats, incidents, checks) {
+    const status = endpointStatus(endpoint);
+    const admin = state.user?.role === 'admin';
+    const expected = endpoint.expected_status ? `HTTP ${endpoint.expected_status}` : '2xx–3xx';
+    const body = $('#modal-body');
+    body.innerHTML = `
+        <div class="detail-head">
+            <div>
+                <a class="site-url" href="${escapeHtml(safeUrl(endpoint.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(endpoint.url)}</a>
+                <div class="detail-badges">
+                    <span class="status-pill ${status.key}"><span class="dot"></span>${status.label}</span>
+                    <span class="badge">${escapeHtml(endpoint.site_name || '')}</span>
+                    ${endpoint.paused ? `<span class="badge">${escapeHtml(I18n.t('status.paused'))}</span>` : ''}
+                    ${endpoint.site_paused ? `<span class="badge badge-warning">${escapeHtml(I18n.t('status.sitePaused'))}</span>` : ''}
+                    ${endpointExpected(endpoint) ? `<span class="badge">${escapeHtml(endpointExpected(endpoint))}</span>` : ''}
+                </div>
+            </div>
+            <div class="detail-actions">
+                ${admin ? `
+                    <button class="btn-secondary small" data-detail-action="check">${escapeHtml(I18n.t('detail.check'))}</button>
+                    <button class="btn-secondary small" data-detail-action="pause">${escapeHtml(I18n.t(endpoint.paused ? 'detail.resume' : 'detail.pause'))}</button>
+                    <button class="btn-danger small" data-detail-action="delete">${escapeHtml(I18n.t('common.delete'))}</button>` : ''}
+            </div>
+        </div>
+        <div class="range-switch">
+            ${['24h', '7d', '30d'].map((range) => `
+                <button class="range-btn ${state.detailRange === range ? 'active' : ''}" data-range="${range}">${range}</button>
+            `).join('')}
+        </div>
+        <div class="stat-grid">
+            <div class="stat-card"><span>${escapeHtml(I18n.t('detail.statUptime'))}</span><strong>${escapeHtml(formatPercent(stats.uptime_percent))}</strong></div>
+            <div class="stat-card"><span>${escapeHtml(I18n.t('detail.statChecks'))}</span><strong>${stats.checks_count ?? 0}</strong></div>
+            <div class="stat-card"><span>${escapeHtml(I18n.t('detail.statAvgLatency'))}</span><strong>${escapeHtml(formatLatency(stats.avg_latency_ms))}</strong></div>
+            <div class="stat-card"><span>${escapeHtml(I18n.t('detail.statExpectedStatus'))}</span><strong>${escapeHtml(expected)}</strong></div>
+        </div>
+        <div class="chart-block">
+            <h3>${escapeHtml(I18n.t('detail.chartLatency'))}</h3>
+            <div class="chart-wrap"><canvas id="latency-chart"></canvas></div>
+        </div>
+        <div class="chart-block">
+            <h3>${escapeHtml(I18n.t('detail.chartUptime'))}</h3>
+            <div class="chart-wrap"><canvas id="uptime-chart"></canvas></div>
+        </div>
+        <div class="chart-block">
+            <h3>${escapeHtml(I18n.t('detail.chartIncidents'))}</h3>
+            ${renderIncidents(incidents)}
+            ${renderCheckLog(checks)}
+        </div>`;
+    renderCharts(endpoint, stats, incidents);
+}
+
 async function handleDetailAction(action) {
+    if (state.detailType === 'endpoint') {
+        await handleEndpointDetailAction(action);
+        return;
+    }
     const site = state.detailSite;
     if (!site) return;
+    if (action === 'add-endpoint') {
+        openAddEndpoint(null, site.id);
+        return;
+    }
     try {
         if (action === 'check') {
             toast(I18n.t('toast.checking'), 'info');
@@ -657,21 +941,60 @@ async function handleDetailAction(action) {
     }
 }
 
+async function handleEndpointDetailAction(action) {
+    const endpoint = state.detailEndpoint;
+    if (!endpoint) return;
+    try {
+        if (action === 'check') {
+            toast(I18n.t('toast.checking'), 'info');
+            await api(`/api/endpoints/${endpoint.id}/check`, { method: 'POST' });
+            toast(I18n.t('toast.checked'), 'success');
+        } else if (action === 'pause') {
+            await api(`/api/endpoints/${endpoint.id}/pause`, {
+                method: 'POST',
+                body: { paused: !endpoint.paused }
+            });
+            toast(endpoint.paused ? I18n.t('toast.endpointResumed') : I18n.t('toast.endpointPaused'), 'success');
+        } else if (action === 'delete') {
+            if (!confirm(I18n.t('confirm.deleteEndpoint', { name: endpoint.name || endpoint.path }))) return;
+            await api(`/api/endpoints/${endpoint.id}`, { method: 'DELETE' });
+            toast(I18n.t('toast.endpointDeleted'), 'success');
+            closeModal('modal');
+            state.detailEndpointId = null;
+            state.detailEndpoint = null;
+            await loadEndpoints();
+            await loadSites();
+            return;
+        }
+        await loadEndpoints();
+        await loadSites();
+        await loadEndpointDetail();
+    } catch (error) {
+        toastError(error);
+    }
+}
+
 async function handleIncidentAction(action, incidentId) {
+    const endpointIncident = state.detailType === 'endpoint';
+    const base = endpointIncident ? '/api/endpoint-incidents' : '/api/incidents';
     try {
         if (action === 'ack') {
-            await api(`/api/incidents/${incidentId}/ack`, { method: 'POST' });
+            await api(`${base}/${incidentId}/ack`, { method: 'POST' });
             toast(I18n.t('toast.incidentAcked'), 'success');
         } else if (action === 'note') {
             const note = prompt(I18n.t('prompt.incidentNote'));
             if (note === null) return;
-            await api(`/api/incidents/${incidentId}`, {
+            await api(`${base}/${incidentId}`, {
                 method: 'PATCH',
                 body: { note }
             });
             toast(I18n.t('toast.noteSaved'), 'success');
         }
-        await loadDetail();
+        if (endpointIncident) {
+            await loadEndpointDetail();
+        } else {
+            await loadDetail();
+        }
         await loadSites();
     } catch (error) {
         toastError(error);
@@ -723,6 +1046,97 @@ async function saveSite() {
         }
     } catch (error) {
         toastError(error);
+    }
+}
+
+function openAddEndpoint(endpoint = null, siteId = null) {
+    if (!state.sites.length) {
+        toast(I18n.t('toast.needSite'), 'error');
+        return;
+    }
+    state.editingEndpointId = endpoint ? endpoint.id : null;
+    $('#endpoint-modal-title').textContent = I18n.t(endpoint ? 'endpoint.edit' : 'endpoint.add');
+    $('#confirm-endpoint-btn').textContent = I18n.t(endpoint ? 'common.save' : 'endpoint.add');
+    const select = $('#endpoint-site-input');
+    select.innerHTML = state.sites.map((site) => (
+        `<option value="${site.id}">${escapeHtml(site.name || site.url)}</option>`
+    )).join('');
+    if (endpoint) {
+        select.value = String(endpoint.site_id);
+    } else if (siteId) {
+        select.value = String(siteId);
+    }
+    $('#endpoint-path-input').value = endpoint?.path || '';
+    $('#endpoint-name-input').value = endpoint?.name || '';
+    $('#endpoint-interval-input').value = endpoint?.check_interval_seconds || '';
+    $('#endpoint-status-code-input').value = endpoint?.expected_status || '';
+    $('#endpoint-body-input').value = endpoint?.expected_body || '';
+    openModal('endpoint-modal');
+    setTimeout(() => $('#endpoint-path-input').focus(), 50);
+}
+
+async function saveEndpoint() {
+    const siteId = Number($('#endpoint-site-input').value);
+    const path = $('#endpoint-path-input').value.trim();
+    const name = $('#endpoint-name-input').value.trim();
+    const interval = $('#endpoint-interval-input').value;
+    const statusCode = $('#endpoint-status-code-input').value;
+    const expectedBody = $('#endpoint-body-input').value.trim();
+    if (!siteId) {
+        toast(I18n.t('toast.needSite'), 'error');
+        return;
+    }
+    if (!path || !path.startsWith('/') || path.startsWith('//')) {
+        toast(I18n.t('toast.needPath'), 'error');
+        return;
+    }
+    const payload = {
+        site_id: siteId,
+        path,
+        name,
+        check_interval_seconds: interval ? Number(interval) : null,
+        expected_status: statusCode ? Number(statusCode) : null,
+        expected_body: expectedBody || null
+    };
+    try {
+        if (state.editingEndpointId) {
+            await api(`/api/endpoints/${state.editingEndpointId}`, { method: 'PUT', body: payload });
+            toast(I18n.t('toast.endpointUpdated'), 'success');
+        } else {
+            await api('/api/endpoints', { method: 'POST', body: payload });
+            toast(I18n.t('toast.endpointAdded'), 'success');
+        }
+        closeModal('endpoint-modal');
+        await loadSites();
+        await loadEndpoints();
+        if (state.detailType === 'endpoint' && state.detailEndpointId) {
+            await loadEndpointDetail();
+        } else if (state.detailType === 'site' && state.detailSiteId) {
+            await loadDetail();
+        }
+    } catch (error) {
+        toastError(error);
+    }
+}
+
+function setMode(mode) {
+    state.mode = mode === 'endpoints' ? 'endpoints' : 'sites';
+    localStorage.setItem('vibemonitor-mode', state.mode);
+    document.querySelectorAll('.mode-btn').forEach((button) => {
+        button.classList.toggle('active', button.dataset.mode === state.mode);
+    });
+    const sitesMode = state.mode === 'sites';
+    $('#sites-view').classList.toggle('hidden', !sitesMode);
+    $('#endpoints-view').classList.toggle('hidden', sitesMode);
+    $('#search-input').classList.toggle('hidden', !sitesMode);
+    $('#filters-toggle').classList.toggle('hidden', !sitesMode);
+    $('#filter-selects').classList.toggle('hidden', !sitesMode);
+    const fab = $('#add-site-btn');
+    const fabTitle = I18n.t(sitesMode ? 'fab.title' : 'endpoint.add');
+    fab.setAttribute('title', fabTitle);
+    fab.setAttribute('aria-label', fabTitle);
+    if (!sitesMode) {
+        loadEndpoints().catch(toastError);
     }
 }
 
@@ -794,10 +1208,15 @@ async function saveSettings() {
             I18n.setLanguage(payload.ui_language || 'ru');
         }
         await loadSites();
+        if (state.mode === 'endpoints') {
+            await loadEndpoints();
+        }
         if (settingsOpen) {
             await loadSettingsData();
         }
-        if (state.detailSite) {
+        if (state.detailType === 'endpoint' && state.detailEndpointId) {
+            await loadEndpointDetail();
+        } else if (state.detailSite) {
             await loadDetail();
         }
     } catch (error) {
@@ -979,8 +1398,30 @@ function bindEvents() {
 
     $('#theme-btn').addEventListener('click', toggleTheme);
     $('#settings-btn').addEventListener('click', openSettings);
-    $('#add-site-btn').addEventListener('click', () => openAddSite());
+    $('#add-site-btn').addEventListener('click', () => {
+        if (state.mode === 'endpoints') {
+            openAddEndpoint();
+        } else {
+            openAddSite();
+        }
+    });
     $('#confirm-add-btn').addEventListener('click', saveSite);
+    $('#confirm-endpoint-btn').addEventListener('click', saveEndpoint);
+    document.querySelectorAll('.mode-btn').forEach((button) => {
+        button.addEventListener('click', () => setMode(button.dataset.mode));
+    });
+    $('#endpoint-search').addEventListener('input', (event) => {
+        state.endpointFilters.search = event.target.value.trim();
+        renderEndpoints();
+    });
+    $('#endpoint-site-filter').addEventListener('change', (event) => {
+        state.endpointFilters.site = event.target.value;
+        renderEndpoints();
+    });
+    $('#endpoint-status-filter').addEventListener('change', (event) => {
+        state.endpointFilters.status = event.target.value;
+        renderEndpoints();
+    });
     $('#save-settings-btn').addEventListener('click', saveSettings);
     $('#save-status-btn').addEventListener('click', saveSettings);
     $('#add-recipient-btn').addEventListener('click', addRecipient);
@@ -1021,16 +1462,47 @@ function bindEvents() {
         openSiteDetail(siteId);
     });
 
+    $('#endpoints-list').addEventListener('click', (event) => {
+        if (event.target.closest('a')) return;
+        const action = event.target.closest('[data-endpoint-action]');
+        const card = event.target.closest('.endpoint-card');
+        if (!card) return;
+        const endpointId = Number(card.dataset.endpointId);
+        if (action) {
+            event.preventDefault();
+            handleEndpointCardAction(action.dataset.endpointAction, endpointId);
+            return;
+        }
+        openEndpointDetail(endpointId);
+    });
+
     $('#modal-body').addEventListener('click', (event) => {
         const range = event.target.closest('[data-range]');
         if (range) {
             state.detailRange = range.dataset.range;
-            loadDetail();
+            if (state.detailType === 'endpoint') {
+                loadEndpointDetail();
+            } else {
+                loadDetail();
+            }
             return;
         }
         const action = event.target.closest('[data-detail-action]');
         if (action) {
             handleDetailAction(action.dataset.detailAction);
+            return;
+        }
+        const endpointAction = event.target.closest('[data-site-endpoint-action]');
+        if (endpointAction) {
+            handleEndpointCardAction(
+                endpointAction.dataset.siteEndpointAction,
+                Number(endpointAction.dataset.endpointId)
+            );
+            return;
+        }
+        const endpointRow = event.target.closest('[data-site-endpoint-id]');
+        if (endpointRow) {
+            openEndpointDetail(Number(endpointRow.dataset.siteEndpointId));
             return;
         }
         const ack = event.target.closest('[data-incident-ack]');
@@ -1046,6 +1518,10 @@ function bindEvents() {
 
     $('#edit-site-btn').addEventListener('click', () => {
         if (state.detailSite) openAddSite(state.detailSite);
+    });
+
+    $('#edit-endpoint-btn').addEventListener('click', () => {
+        if (state.detailEndpoint) openAddEndpoint(state.detailEndpoint);
     });
 
     document.querySelectorAll('[data-close]').forEach((button) => {
@@ -1172,6 +1648,7 @@ async function init() {
         }
         syncFilterHighlight();
         await loadSites();
+        setMode(localStorage.getItem('vibemonitor-mode') || 'sites');
     } catch (error) {
         showLogin();
     }

@@ -152,6 +152,15 @@ class SiteBase(BaseModel):
         return str(self.url)
 
 
+class EndpointBase(BaseModel):
+    site_id: int = Field(..., ge=1)
+    path: str = Field(..., min_length=1, max_length=500)
+    name: str = Field(default="", max_length=200)
+    check_interval_seconds: int | None = Field(None, ge=5, le=3600)
+    expected_status: int | None = Field(None, ge=100, le=599)
+    expected_body: str | None = Field(None, max_length=1000)
+
+
 class SettingsUpdate(BaseModel):
     project_name: str = Field(..., min_length=1, max_length=100)
     check_interval_seconds: int = Field(..., ge=5, le=3600)
@@ -220,6 +229,19 @@ def _guard_site_url(site: SiteBase) -> str:
             detail="URL points to a private or reserved address",
         ) from None
     return url
+
+
+def _clean_endpoint_path(endpoint: EndpointBase) -> tuple[str, str | None]:
+    path = endpoint.path.strip()
+    if (
+        not path.startswith("/")
+        or path.startswith("//")
+        or "://" in path
+        or any(char.isspace() for char in path)
+    ):
+        raise HTTPException(status_code=400, detail="Invalid endpoint path")
+    body = (endpoint.expected_body or "").strip() or None
+    return path, body
 
 
 def ui_language() -> str:
@@ -439,6 +461,175 @@ async def site_stats(request: Request, site_id: int, range: str = "24h"):
             site_id=site_id, limit=50, since=since
         ),
     }
+
+
+@app.get("/api/endpoints")
+async def get_endpoints(request: Request, site_id: int | None = None):
+    require_user(request)
+    if site_id is not None and not repository.get_site(site_id):
+        raise HTTPException(status_code=404, detail="Site not found")
+    return {"endpoints": repository.list_endpoints(site_id)}
+
+
+@app.post("/api/endpoints")
+async def add_endpoint(request: Request, endpoint: EndpointBase):
+    require_admin(request)
+    if not repository.get_site(endpoint.site_id):
+        raise HTTPException(status_code=404, detail="Site not found")
+    path, expected_body = _clean_endpoint_path(endpoint)
+    try:
+        created = repository.create_endpoint(
+            endpoint.site_id,
+            path,
+            endpoint.name.strip(),
+            endpoint.check_interval_seconds,
+            endpoint.expected_status,
+            expected_body,
+        )
+    except IntegrityError:
+        raise HTTPException(
+            status_code=409, detail="Endpoint already exists"
+        ) from None
+    monitor.endpoint_changed(created["id"])
+    return created
+
+
+@app.get("/api/endpoints/{endpoint_id}")
+async def get_endpoint(request: Request, endpoint_id: int):
+    require_user(request)
+    endpoint = repository.get_endpoint(endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=404, detail="Endpoint not found")
+    return endpoint
+
+
+@app.put("/api/endpoints/{endpoint_id}")
+async def update_endpoint(
+    request: Request, endpoint_id: int, endpoint: EndpointBase
+):
+    require_admin(request)
+    existing = repository.get_endpoint(endpoint_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Endpoint not found")
+    if not repository.get_site(endpoint.site_id):
+        raise HTTPException(status_code=404, detail="Site not found")
+    path, expected_body = _clean_endpoint_path(endpoint)
+    try:
+        updated = repository.update_endpoint(
+            endpoint_id,
+            endpoint.site_id,
+            path,
+            endpoint.name.strip(),
+            endpoint.check_interval_seconds,
+            endpoint.expected_status,
+            expected_body,
+        )
+    except IntegrityError:
+        raise HTTPException(
+            status_code=409, detail="Endpoint already exists"
+        ) from None
+    monitor.endpoint_changed(endpoint_id)
+    return updated
+
+
+@app.delete("/api/endpoints/{endpoint_id}")
+async def delete_endpoint(request: Request, endpoint_id: int):
+    require_admin(request)
+    if not repository.delete_endpoint(endpoint_id):
+        raise HTTPException(status_code=404, detail="Endpoint not found")
+    monitor.endpoint_removed(endpoint_id)
+    return {"ok": True}
+
+
+@app.post("/api/endpoints/{endpoint_id}/check")
+async def check_endpoint_now(request: Request, endpoint_id: int):
+    require_admin(request)
+    updated = await monitor.check_endpoint_now(endpoint_id)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Endpoint not found")
+    return updated
+
+
+@app.post("/api/endpoints/{endpoint_id}/pause")
+async def pause_endpoint(
+    request: Request, endpoint_id: int, payload: PauseRequest
+):
+    require_admin(request)
+    if not repository.get_endpoint(endpoint_id):
+        raise HTTPException(status_code=404, detail="Endpoint not found")
+    endpoint = repository.set_endpoint_paused(endpoint_id, payload.paused)
+    monitor.endpoint_changed(endpoint_id)
+    return endpoint
+
+
+@app.get("/api/endpoints/{endpoint_id}/checks")
+async def endpoint_checks(request: Request, endpoint_id: int, limit: int = 100):
+    require_user(request)
+    if not repository.get_endpoint(endpoint_id):
+        raise HTTPException(status_code=404, detail="Endpoint not found")
+    return {
+        "checks": repository.list_endpoint_checks(
+            endpoint_id, max(1, min(limit, 200))
+        )
+    }
+
+
+@app.get("/api/endpoints/{endpoint_id}/stats")
+async def endpoint_stats(request: Request, endpoint_id: int, range: str = "24h"):
+    require_user(request)
+    endpoint = repository.get_endpoint(endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=404, detail="Endpoint not found")
+    if range not in repository.RANGES:
+        raise HTTPException(status_code=400, detail="Invalid range")
+    since = time.time() - repository.RANGES[range][0]
+    return {
+        "endpoint": endpoint,
+        "stats": repository.endpoint_stats(endpoint_id, range),
+        "incidents": repository.list_endpoint_incidents(
+            endpoint_id=endpoint_id, limit=50, since=since
+        ),
+    }
+
+
+@app.get("/api/endpoint-incidents")
+async def get_endpoint_incidents(
+    request: Request,
+    endpoint_id: int | None = None,
+    limit: int = 50,
+    open_only: bool = False,
+):
+    require_user(request)
+    return {
+        "incidents": repository.list_endpoint_incidents(
+            endpoint_id=endpoint_id,
+            limit=max(1, min(limit, 200)),
+            open_only=open_only,
+        )
+    }
+
+
+@app.post("/api/endpoint-incidents/{incident_id}/ack")
+async def ack_endpoint_incident(
+    request: Request, incident_id: int, payload: IncidentUpdate | None = None
+):
+    require_admin(request)
+    note = payload.note if payload else None
+    incident = repository.acknowledge_endpoint_incident(incident_id, note)
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    return incident
+
+
+@app.patch("/api/endpoint-incidents/{incident_id}")
+async def update_endpoint_incident(
+    request: Request, incident_id: int, payload: IncidentUpdate
+):
+    require_admin(request)
+    incident = repository.update_endpoint_incident_note(incident_id, payload.note)
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    return incident
 
 
 @app.get("/api/incidents")

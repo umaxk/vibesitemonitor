@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from app import db
 
@@ -52,6 +53,26 @@ def serialize_site(row) -> dict:
     site["status"] = site.get("last_status")
     site.pop("ssl_alerted", None)
     return site
+
+
+def site_origin(url: str) -> str:
+    parts = urlsplit(str(url))
+    return urlunsplit((parts.scheme, parts.netloc, "", "", ""))
+
+
+def build_endpoint_url(site_url: str, path: str) -> str:
+    return f"{site_origin(site_url)}{path}"
+
+
+def serialize_endpoint(row) -> dict:
+    endpoint = dict(row)
+    endpoint["paused"] = bool(endpoint.get("paused"))
+    endpoint["site_paused"] = bool(endpoint.get("site_paused"))
+    endpoint["status"] = endpoint.get("last_status")
+    endpoint["url"] = build_endpoint_url(
+        endpoint.get("site_url") or "", endpoint.get("path") or ""
+    )
+    return endpoint
 
 
 def _encode_tags(tags: list[str] | None) -> str:
@@ -188,7 +209,10 @@ def list_sites(public_only: bool = False) -> list[dict]:
     rows = db.query_all(
         "SELECT s.*, "
         "(SELECT started_at FROM incidents i WHERE i.site_id=s.id "
-        " ORDER BY i.started_at DESC LIMIT 1) AS last_incident_time "
+        " ORDER BY i.started_at DESC LIMIT 1) AS last_incident_time, "
+        "(SELECT COUNT(*) FROM endpoints e WHERE e.site_id=s.id) AS endpoints_count, "
+        "(SELECT COUNT(*) FROM endpoints e WHERE e.site_id=s.id "
+        " AND e.paused=0 AND e.last_status='down') AS endpoints_down "
         f"FROM sites s {where} ORDER BY s.id"
     )
     uptime = uptime_map(time.time() - 86400)
@@ -202,7 +226,10 @@ def get_site(site_id: int) -> dict | None:
     row = db.query_one(
         "SELECT s.*, "
         "(SELECT started_at FROM incidents i WHERE i.site_id=s.id "
-        " ORDER BY i.started_at DESC LIMIT 1) AS last_incident_time "
+        " ORDER BY i.started_at DESC LIMIT 1) AS last_incident_time, "
+        "(SELECT COUNT(*) FROM endpoints e WHERE e.site_id=s.id) AS endpoints_count, "
+        "(SELECT COUNT(*) FROM endpoints e WHERE e.site_id=s.id "
+        " AND e.paused=0 AND e.last_status='down') AS endpoints_down "
         "FROM sites s WHERE s.id = ?",
         (site_id,),
     )
@@ -299,6 +326,289 @@ def delete_site(site_id: int) -> bool:
     with db.transaction() as conn:
         cursor = conn.execute("DELETE FROM sites WHERE id=?", (site_id,))
     return cursor.rowcount > 0
+
+
+def endpoint_uptime_map(since: float) -> dict[int, float]:
+    rows = db.query_all(
+        "SELECT endpoint_id, "
+        "SUM(CASE WHEN status='up' THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS uptime "
+        "FROM endpoint_checks WHERE timestamp >= ? GROUP BY endpoint_id",
+        (since,),
+    )
+    return {row["endpoint_id"]: round(row["uptime"], 1) for row in rows}
+
+
+def list_endpoints(
+    site_id: int | None = None, with_uptime: bool = True
+) -> list[dict]:
+    where = "WHERE e.site_id = ?" if site_id is not None else ""
+    params = (site_id,) if site_id is not None else ()
+    rows = db.query_all(
+        "SELECT e.*, s.name AS site_name, s.url AS site_url, s.paused AS site_paused "
+        "FROM endpoints e JOIN sites s ON s.id = e.site_id "
+        f"{where} ORDER BY s.id, e.id",
+        params,
+    )
+    endpoints = [serialize_endpoint(row) for row in rows]
+    if with_uptime:
+        uptime = endpoint_uptime_map(time.time() - 86400)
+        for endpoint in endpoints:
+            endpoint["uptime_24h"] = uptime.get(endpoint["id"])
+    return endpoints
+
+
+def get_endpoint(endpoint_id: int) -> dict | None:
+    row = db.query_one(
+        "SELECT e.*, s.name AS site_name, s.url AS site_url, s.paused AS site_paused "
+        "FROM endpoints e JOIN sites s ON s.id = e.site_id WHERE e.id = ?",
+        (endpoint_id,),
+    )
+    return serialize_endpoint(row) if row else None
+
+
+def create_endpoint(
+    site_id: int,
+    path: str,
+    name: str,
+    check_interval_seconds: int | None,
+    expected_status: int | None,
+    expected_body: str | None,
+) -> dict:
+    now = time.time()
+    with db.transaction() as conn:
+        cursor = conn.execute(
+            "INSERT INTO endpoints "
+            "(site_id, path, name, check_interval_seconds, expected_status, "
+            "expected_body, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                site_id,
+                path,
+                name or path,
+                check_interval_seconds,
+                expected_status,
+                expected_body,
+                now,
+                now,
+            ),
+        )
+        endpoint_id = cursor.lastrowid
+    return get_endpoint(endpoint_id)
+
+
+def update_endpoint(
+    endpoint_id: int,
+    site_id: int,
+    path: str,
+    name: str,
+    check_interval_seconds: int | None,
+    expected_status: int | None,
+    expected_body: str | None,
+) -> dict | None:
+    with db.transaction() as conn:
+        cursor = conn.execute(
+            "UPDATE endpoints SET site_id=?, path=?, name=?, "
+            "check_interval_seconds=?, expected_status=?, expected_body=?, "
+            "updated_at=? WHERE id=?",
+            (
+                site_id,
+                path,
+                name or path,
+                check_interval_seconds,
+                expected_status,
+                expected_body,
+                time.time(),
+                endpoint_id,
+            ),
+        )
+        if cursor.rowcount == 0:
+            return None
+    return get_endpoint(endpoint_id)
+
+
+def set_endpoint_paused(endpoint_id: int, paused: bool) -> dict | None:
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE endpoints SET paused=?, updated_at=? WHERE id=?",
+            (1 if paused else 0, time.time(), endpoint_id),
+        )
+    return get_endpoint(endpoint_id)
+
+
+def delete_endpoint(endpoint_id: int) -> bool:
+    with db.transaction() as conn:
+        cursor = conn.execute("DELETE FROM endpoints WHERE id=?", (endpoint_id,))
+    return cursor.rowcount > 0
+
+
+def _open_endpoint_incident(conn, endpoint_id: int):
+    return conn.execute(
+        "SELECT * FROM endpoint_incidents WHERE endpoint_id=? AND ended_at IS NULL "
+        "ORDER BY started_at DESC LIMIT 1",
+        (endpoint_id,),
+    ).fetchone()
+
+
+def record_endpoint_check(endpoint_id: int, result: dict) -> dict | None:
+    """Persist an endpoint check and return a transition event, if any."""
+    with db.transaction() as conn:
+        row = conn.execute(
+            "SELECT * FROM endpoints WHERE id=?", (endpoint_id,)
+        ).fetchone()
+        if not row:
+            return None
+        previous_status = row["last_status"]
+        conn.execute(
+            "INSERT INTO endpoint_checks "
+            "(endpoint_id, timestamp, status, http_code, latency_ms, error) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                endpoint_id,
+                result["timestamp"],
+                result["status"],
+                result.get("http_code"),
+                result.get("latency_ms"),
+                result.get("error"),
+            ),
+        )
+        conn.execute(
+            "UPDATE endpoints SET last_status=?, last_check=?, last_http_code=?, "
+            "last_latency_ms=?, last_error=? WHERE id=?",
+            (
+                result["status"],
+                result["timestamp"],
+                result.get("http_code"),
+                result.get("latency_ms"),
+                result.get("error"),
+                endpoint_id,
+            ),
+        )
+        event = None
+        if result["status"] == "down":
+            incident = _open_endpoint_incident(conn, endpoint_id)
+            if incident is None:
+                cursor = conn.execute(
+                    "INSERT INTO endpoint_incidents "
+                    "(endpoint_id, started_at, last_error) VALUES (?, ?, ?)",
+                    (endpoint_id, result["timestamp"], result.get("error")),
+                )
+                event = {
+                    "type": "down",
+                    "incident_id": cursor.lastrowid,
+                    "previous_status": previous_status,
+                }
+            else:
+                conn.execute(
+                    "UPDATE endpoint_incidents SET last_error=? WHERE id=?",
+                    (result.get("error"), incident["id"]),
+                )
+        elif result["status"] == "up":
+            incident = _open_endpoint_incident(conn, endpoint_id)
+            if incident is not None:
+                conn.execute(
+                    "UPDATE endpoint_incidents SET ended_at=?, last_error=? WHERE id=?",
+                    (
+                        result["timestamp"],
+                        result.get("error") or incident["last_error"],
+                        incident["id"],
+                    ),
+                )
+                event = {
+                    "type": "up",
+                    "incident_id": incident["id"],
+                    "started_at": incident["started_at"],
+                    "duration_seconds": max(
+                        0, result["timestamp"] - incident["started_at"]
+                    ),
+                }
+    return event
+
+
+def get_open_endpoint_incident(endpoint_id: int) -> dict | None:
+    row = db.query_one(
+        "SELECT * FROM endpoint_incidents WHERE endpoint_id=? AND ended_at IS NULL "
+        "ORDER BY started_at DESC LIMIT 1",
+        (endpoint_id,),
+    )
+    return dict(row) if row else None
+
+
+def list_endpoint_incidents(
+    endpoint_id: int | None = None,
+    limit: int = 50,
+    since: float | None = None,
+    open_only: bool = False,
+) -> list[dict]:
+    where = []
+    params: list = []
+    if endpoint_id is not None:
+        where.append("i.endpoint_id = ?")
+        params.append(endpoint_id)
+    if since is not None:
+        where.append("i.started_at >= ?")
+        params.append(since)
+    if open_only:
+        where.append("i.ended_at IS NULL")
+    clause = f"WHERE {' AND '.join(where)}" if where else ""
+    params.append(limit)
+    rows = db.query_all(
+        "SELECT i.*, e.name AS endpoint_name, e.path AS endpoint_path, "
+        "s.id AS site_id, s.name AS site_name, s.url AS site_url "
+        "FROM endpoint_incidents i "
+        "JOIN endpoints e ON e.id = i.endpoint_id "
+        "JOIN sites s ON s.id = e.site_id "
+        f"{clause} ORDER BY i.started_at DESC LIMIT ?",
+        params,
+    )
+    incidents = []
+    now = time.time()
+    for row in rows:
+        incident = dict(row)
+        incident["ongoing"] = incident["ended_at"] is None
+        end = incident["ended_at"] or now
+        incident["duration_seconds"] = max(0, end - incident["started_at"])
+        incidents.append(incident)
+    return incidents
+
+
+def acknowledge_endpoint_incident(
+    incident_id: int, note: str | None = None
+) -> dict | None:
+    with db.transaction() as conn:
+        cursor = conn.execute(
+            "UPDATE endpoint_incidents SET acknowledged_at=?, "
+            "note=COALESCE(?, note) WHERE id=?",
+            (time.time(), note, incident_id),
+        )
+        if cursor.rowcount == 0:
+            return None
+    row = db.query_one(
+        "SELECT * FROM endpoint_incidents WHERE id=?", (incident_id,)
+    )
+    return dict(row) if row else None
+
+
+def update_endpoint_incident_note(incident_id: int, note: str) -> dict | None:
+    with db.transaction() as conn:
+        cursor = conn.execute(
+            "UPDATE endpoint_incidents SET note=? WHERE id=?", (note, incident_id)
+        )
+        if cursor.rowcount == 0:
+            return None
+    row = db.query_one(
+        "SELECT * FROM endpoint_incidents WHERE id=?", (incident_id,)
+    )
+    return dict(row) if row else None
+
+
+def list_endpoint_checks(endpoint_id: int, limit: int = 100) -> list[dict]:
+    rows = db.query_all(
+        "SELECT timestamp, status, http_code, latency_ms, error "
+        "FROM endpoint_checks WHERE endpoint_id=? "
+        "ORDER BY timestamp DESC LIMIT ?",
+        (endpoint_id, limit),
+    )
+    return [dict(row) for row in rows]
 
 
 def update_ssl(
@@ -486,15 +796,17 @@ def list_checks(site_id: int, limit: int = 100) -> list[dict]:
     return [dict(row) for row in rows]
 
 
-def site_stats(site_id: int, range_key: str = "24h") -> dict:
+def _range_stats(
+    table: str, id_column: str, entity_id: int, range_key: str
+) -> dict:
     duration, bucket_seconds = RANGES.get(range_key, RANGES["24h"])
     since = time.time() - duration
     totals = db.query_one(
         "SELECT COUNT(*) AS total, "
         "SUM(CASE WHEN status='up' THEN 1 ELSE 0 END) AS up, "
         "AVG(latency_ms) AS avg_latency "
-        "FROM checks WHERE site_id=? AND timestamp>=?",
-        (site_id, since),
+        f"FROM {table} WHERE {id_column}=? AND timestamp>=?",
+        (entity_id, since),
     )
     total = totals["total"] if totals else 0
     up = totals["up"] if totals and totals["up"] else 0
@@ -502,9 +814,9 @@ def site_stats(site_id: int, range_key: str = "24h") -> dict:
         "SELECT (CAST(strftime('%s', timestamp, 'unixepoch') AS INTEGER) / ?) * ? "
         "AS bucket, AVG(latency_ms) AS latency_ms, "
         "SUM(CASE WHEN status='up' THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS uptime "
-        "FROM checks WHERE site_id=? AND timestamp>=? "
+        f"FROM {table} WHERE {id_column}=? AND timestamp>=? "
         "GROUP BY bucket ORDER BY bucket",
-        (bucket_seconds, bucket_seconds, site_id, since),
+        (bucket_seconds, bucket_seconds, entity_id, since),
     )
     return {
         "range": range_key,
@@ -528,6 +840,16 @@ def site_stats(site_id: int, range_key: str = "24h") -> dict:
     }
 
 
+def site_stats(site_id: int, range_key: str = "24h") -> dict:
+    return _range_stats("checks", "site_id", site_id, range_key)
+
+
+def endpoint_stats(endpoint_id: int, range_key: str = "24h") -> dict:
+    return _range_stats(
+        "endpoint_checks", "endpoint_id", endpoint_id, range_key
+    )
+
+
 def list_public_status() -> dict:
     settings = get_settings()
     sites = list_sites(public_only=True)
@@ -537,6 +859,8 @@ def list_public_status() -> dict:
         site["uptime_7d"] = uptime_7d.get(site["id"])
         site["last_error"] = None
         site["ssl_error"] = None
+        site.pop("endpoints_count", None)
+        site.pop("endpoints_down", None)
     incidents = list_incidents(
         since=now - 7 * 86400, public_only=True, limit=20
     )
@@ -716,7 +1040,16 @@ def cleanup_old_data() -> None:
             "DELETE FROM checks WHERE timestamp < ?", (now - check_days * 86400,)
         )
         conn.execute(
+            "DELETE FROM endpoint_checks WHERE timestamp < ?",
+            (now - check_days * 86400,),
+        )
+        conn.execute(
             "DELETE FROM incidents WHERE ended_at IS NOT NULL AND ended_at < ?",
+            (now - incident_days * 86400,),
+        )
+        conn.execute(
+            "DELETE FROM endpoint_incidents "
+            "WHERE ended_at IS NOT NULL AND ended_at < ?",
             (now - incident_days * 86400,),
         )
         conn.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
