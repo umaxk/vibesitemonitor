@@ -2,6 +2,7 @@ const state = {
     user: null,
     sites: [],
     endpoints: [],
+    endpointsLoaded: false,
     meta: {},
     settings: null,
     mode: 'sites',
@@ -396,6 +397,7 @@ function populateEndpointSiteFilter() {
 async function loadEndpoints() {
     const data = await api('/api/endpoints');
     state.endpoints = data.endpoints;
+    state.endpointsLoaded = true;
     populateEndpointSiteFilter();
     renderEndpoints();
 }
@@ -1063,6 +1065,72 @@ async function saveSite() {
     }
 }
 
+function endpointPresets() {
+    const groups = new Map();
+    state.endpoints.forEach((endpoint) => {
+        const path = endpoint.path || '';
+        if (!path) return;
+        let group = groups.get(path);
+        if (!group) {
+            group = { path, endpoint, siteIds: new Set() };
+            groups.set(path, group);
+        }
+        group.siteIds.add(endpoint.site_id);
+    });
+    return [...groups.values()].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function renderEndpointPresets() {
+    const group = $('#endpoint-preset-group');
+    const select = $('#endpoint-preset-input');
+    if (!group || !select) return;
+    const presets = endpointPresets();
+    group.classList.toggle('hidden', !presets.length);
+    if (!presets.length) {
+        select.innerHTML = '';
+        return;
+    }
+    const current = select.value;
+    select.innerHTML = `<option value="">${escapeHtml(I18n.t('endpoint.presetNone'))}</option>`
+        + presets.map((preset) => {
+            const title = preset.endpoint.name && preset.endpoint.name !== preset.path
+                ? `${preset.path} — ${preset.endpoint.name}`
+                : preset.path;
+            const suffix = preset.siteIds.size > 1
+                ? ` · ${I18n.t('endpoint.presetSites', { n: preset.siteIds.size })}`
+                : '';
+            return `<option value="${escapeHtml(preset.path)}">${escapeHtml(title + suffix)}</option>`;
+        }).join('');
+    select.value = presets.some((preset) => preset.path === current) ? current : '';
+}
+
+function applyEndpointPreset() {
+    const path = $('#endpoint-preset-input').value;
+    const preset = endpointPresets().find((item) => item.path === path);
+    if (preset) {
+        const endpoint = preset.endpoint;
+        $('#endpoint-path-input').value = endpoint.path || '';
+        $('#endpoint-name-input').value = endpoint.name || '';
+        $('#endpoint-interval-input').value = endpoint.check_interval_seconds || '';
+        $('#endpoint-status-code-input').value = endpoint.expected_status || '';
+        $('#endpoint-body-input').value = endpoint.expected_body || '';
+    }
+    updateEndpointDuplicateHint();
+}
+
+function updateEndpointDuplicateHint() {
+    const hint = $('#endpoint-duplicate-hint');
+    if (!hint) return;
+    const siteId = Number($('#endpoint-site-input').value);
+    const path = $('#endpoint-path-input').value.trim();
+    const duplicate = Boolean(siteId && path) && state.endpoints.some((endpoint) => (
+        endpoint.site_id === siteId
+        && endpoint.path === path
+        && endpoint.id !== state.editingEndpointId
+    ));
+    hint.classList.toggle('hidden', !duplicate);
+}
+
 function openAddEndpoint(endpoint = null, siteId = null) {
     if (!state.sites.length) {
         toast(I18n.t('toast.needSite'), 'error');
@@ -1085,6 +1153,25 @@ function openAddEndpoint(endpoint = null, siteId = null) {
     $('#endpoint-interval-input').value = endpoint?.check_interval_seconds || '';
     $('#endpoint-status-code-input').value = endpoint?.expected_status || '';
     $('#endpoint-body-input').value = endpoint?.expected_body || '';
+    if (endpoint) {
+        $('#endpoint-preset-group').classList.add('hidden');
+        $('#endpoint-preset-input').innerHTML = '';
+    } else {
+        renderEndpointPresets();
+        if (!state.endpointsLoaded) {
+            loadEndpoints()
+                .then(() => {
+                    if (
+                        !$('#endpoint-modal').classList.contains('hidden')
+                        && !state.editingEndpointId
+                    ) {
+                        renderEndpointPresets();
+                    }
+                })
+                .catch(() => {});
+        }
+    }
+    updateEndpointDuplicateHint();
     openModal('endpoint-modal');
     setTimeout(() => $('#endpoint-path-input').focus(), 50);
 }
@@ -1421,6 +1508,9 @@ function bindEvents() {
     });
     $('#confirm-add-btn').addEventListener('click', saveSite);
     $('#confirm-endpoint-btn').addEventListener('click', saveEndpoint);
+    $('#endpoint-preset-input').addEventListener('change', applyEndpointPreset);
+    $('#endpoint-path-input').addEventListener('input', updateEndpointDuplicateHint);
+    $('#endpoint-site-input').addEventListener('change', updateEndpointDuplicateHint);
     document.querySelectorAll('.mode-btn').forEach((button) => {
         button.addEventListener('click', () => setMode(button.dataset.mode));
     });

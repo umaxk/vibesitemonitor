@@ -258,10 +258,16 @@
                     <label data-i18n="endpoint.site">Сайт *</label>
                     <select id="endpoint-site-input"></select>
                 </div>
+                <div class="form-group" id="endpoint-preset-group">
+                    <label data-i18n="endpoint.fromExisting">Взять из существующих</label>
+                    <select id="endpoint-preset-input"></select>
+                    <p class="hint" data-i18n="endpoint.presetHint">Настройки выбранного эндпоинта заполнятся в форму. Сайт можно выбрать отдельно.</p>
+                </div>
                 <div class="form-group">
                     <label data-i18n="endpoint.path">Путь *</label>
                     <input type="text" id="endpoint-path-input" placeholder="/api/health" data-i18n-placeholder="endpoint.pathPlaceholder" maxlength="500">
                     <p class="hint endpoint-path-hint" data-i18n="endpoint.pathHint">Путь от корня сайта. Например, /api/health.</p>
+                    <p id="endpoint-duplicate-hint" class="hint endpoint-duplicate-hint hidden" data-i18n="endpoint.presetDuplicate">У выбранного сайта уже есть эндпоинт с таким путём.</p>
                 </div>
                 <div class="form-group">
                     <label data-i18n="endpoint.name">Название</label>

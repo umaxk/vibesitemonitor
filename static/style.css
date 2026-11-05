@@ -990,6 +990,10 @@ body.light .tag {
     margin-top: 0.35rem;
 }
 
+.hint.endpoint-duplicate-hint {
+    color: var(--warn);
+}
+
 .hint {
     color: var(--text-dim);
     font-size: 0.8rem;
