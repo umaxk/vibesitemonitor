@@ -170,7 +170,11 @@ class Monitor:
         async with self._lock_for(site_id):
             try:
                 result = await self._check_site(site["url"])
-                event = repository.record_check(site_id, result)
+                event = repository.record_check(
+                    site_id,
+                    result,
+                    track_incidents=bool(site.get("check_enabled", True)),
+                )
                 updated = repository.get_site(site_id)
                 if not updated:
                     return None
@@ -191,8 +195,14 @@ class Monitor:
                             extra={"site_id": site_id, "incident_id": event["incident_id"]},
                         )
                         await notifications.notify_site_up(updated, event)
-                interval = updated.get("check_interval_seconds") or self._default_interval
-                self._next_check[site_id] = time.time() + max(5, interval)
+                if updated.get("check_enabled", True):
+                    interval = (
+                        updated.get("check_interval_seconds")
+                        or self._default_interval
+                    )
+                    self._next_check[site_id] = time.time() + max(5, interval)
+                else:
+                    self._next_check.pop(site_id, None)
                 return updated
             finally:
                 self._inflight.discard(site_id)
@@ -305,6 +315,9 @@ class Monitor:
         for site in sites:
             site_id = site["id"]
             if site["paused"]:
+                self._next_check.pop(site_id, None)
+                continue
+            if not site.get("check_enabled", True):
                 self._next_check.pop(site_id, None)
                 continue
             if site_id not in self._next_check:

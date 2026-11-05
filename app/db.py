@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS sites (
     name TEXT NOT NULL,
     check_interval_seconds INTEGER,
     paused INTEGER NOT NULL DEFAULT 0,
+    check_enabled INTEGER NOT NULL DEFAULT 1,
     public INTEGER NOT NULL DEFAULT 0,
     tags TEXT NOT NULL DEFAULT '[]',
     ssl_expires_at REAL,
@@ -192,9 +193,21 @@ def execute(sql: str, params=()):
     return get_conn().execute(sql, params)
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    site_columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(sites)")
+    }
+    if "check_enabled" not in site_columns:
+        conn.execute(
+            "ALTER TABLE sites "
+            "ADD COLUMN check_enabled INTEGER NOT NULL DEFAULT 1"
+        )
+
+
 def init_db() -> None:
     conn = get_conn()
     conn.executescript(SCHEMA)
+    _migrate(conn)
     conn.commit()
 
 

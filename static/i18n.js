@@ -34,6 +34,7 @@
                 statusUp: 'Доступны',
                 statusDown: 'Недоступны',
                 statusUnknown: 'Без данных',
+                statusEndpoints: 'Только эндпоинты',
                 statusPaused: 'На паузе',
                 tagAll: 'Все теги',
                 sortName: 'По имени',
@@ -54,6 +55,7 @@
                 down: 'Недоступен',
                 paused: 'Пауза',
                 unknown: 'Нет данных',
+                endpointsOnly: 'Только эндпоинты',
                 sitePaused: 'Сайт на паузе'
             },
             card: {
@@ -62,6 +64,8 @@
                 pauseTitle: 'Поставить на паузу',
                 checkedAt: 'Проверен {ago}',
                 neverChecked: 'Ещё не проверялся',
+                siteCheckOff: 'Проверка сайта отключена',
+                manualCheck: 'Ручная проверка: {ago}',
                 everyNsec: 'Каждые {n} сек',
                 uptime24: '24ч: {value}',
                 badgePublic: 'Публичный',
@@ -93,7 +97,8 @@
                 chartUptime: 'Аптайм',
                 chartIncidents: 'Инциденты',
                 latencyDataset: 'Задержка, мс',
-                uptimeDataset: 'Аптайм, %'
+                uptimeDataset: 'Аптайм, %',
+                siteCheckDisabled: 'Автоматическая проверка сайта и SSL отключена. Эндпоинты проверяются как обычно; сайт можно проверить вручную.'
             },
             incidents: {
                 none: 'Инцидентов за выбранный период нет.',
@@ -167,6 +172,8 @@
                 tags: 'Теги (через запятую)',
                 tagsPlaceholder: 'prod, api',
                 public: 'Показывать на публичной статус-странице',
+                checkSite: 'Проверять доступность сайта',
+                checkSiteHint: 'Если выключить, будут проверяться только эндпоинты.',
                 confirm: 'Добавить'
             },
             endpoint: {
@@ -299,6 +306,7 @@
                 statusUp: 'Reachable',
                 statusDown: 'Unreachable',
                 statusUnknown: 'No data',
+                statusEndpoints: 'Endpoints only',
                 statusPaused: 'Paused',
                 tagAll: 'All tags',
                 sortName: 'By name',
@@ -319,6 +327,7 @@
                 down: 'Down',
                 paused: 'Paused',
                 unknown: 'No data',
+                endpointsOnly: 'Endpoints only',
                 sitePaused: 'Site paused'
             },
             card: {
@@ -327,6 +336,8 @@
                 pauseTitle: 'Pause',
                 checkedAt: 'Checked {ago}',
                 neverChecked: 'Not checked yet',
+                siteCheckOff: 'Site checks disabled',
+                manualCheck: 'Manual check: {ago}',
                 everyNsec: 'Every {n} sec',
                 uptime24: '24h: {value}',
                 badgePublic: 'Public',
@@ -358,7 +369,8 @@
                 chartUptime: 'Uptime',
                 chartIncidents: 'Incidents',
                 latencyDataset: 'Latency, ms',
-                uptimeDataset: 'Uptime, %'
+                uptimeDataset: 'Uptime, %',
+                siteCheckDisabled: 'Automatic site and SSL checks are disabled. Endpoints keep running; you can still check the site manually.'
             },
             incidents: {
                 none: 'No incidents in the selected period.',
@@ -432,6 +444,8 @@
                 tags: 'Tags (comma-separated)',
                 tagsPlaceholder: 'prod, api',
                 public: 'Show on the public status page',
+                checkSite: 'Check site availability',
+                checkSiteHint: 'When disabled, only endpoints are checked.',
                 confirm: 'Add'
             },
             endpoint: {

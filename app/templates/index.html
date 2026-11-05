@@ -38,6 +38,7 @@
                         <option value="up" data-i18n="filter.statusUp">Доступны</option>
                         <option value="down" data-i18n="filter.statusDown">Недоступны</option>
                         <option value="unknown" data-i18n="filter.statusUnknown">Без данных</option>
+                        <option value="endpoints" data-i18n="filter.statusEndpoints">Только эндпоинты</option>
                         <option value="paused" data-i18n="filter.statusPaused">На паузе</option>
                     </select>
                     <select id="tag-filter" class="select-input">
@@ -236,6 +237,10 @@
                 </div>
                 <div class="form-group checkbox-row">
                     <label><input type="checkbox" id="new-site-public"> <span data-i18n="add.public">Показывать на публичной статус-странице</span></label>
+                </div>
+                <div class="form-group checkbox-row">
+                    <label><input type="checkbox" id="new-site-check" checked> <span data-i18n="add.checkSite">Проверять доступность сайта</span></label>
+                    <p class="hint" data-i18n="add.checkSiteHint">Если выключить, будут проверяться только эндпоинты.</p>
                 </div>
                 <button id="confirm-add-btn" class="btn-primary" data-i18n="add.confirm">Добавить</button>
             </div>

@@ -147,6 +147,7 @@ class SiteBase(BaseModel):
     check_interval_seconds: int | None = Field(None, ge=5, le=3600)
     tags: list[str] = Field(default_factory=list, max_length=10)
     public: bool = False
+    check_enabled: bool = True
 
     def clean_url(self) -> str:
         return str(self.url)
@@ -364,6 +365,7 @@ async def add_site(request: Request, site: SiteBase):
             site.check_interval_seconds,
             site.tags,
             site.public,
+            site.check_enabled,
         )
     except IntegrityError:
         raise HTTPException(status_code=409, detail="Site already exists") from None
@@ -398,6 +400,7 @@ async def update_site(request: Request, site_id: int, site: SiteBase):
             site.check_interval_seconds,
             site.tags,
             site.public,
+            site.check_enabled,
         )
     except IntegrityError:
         raise HTTPException(status_code=409, detail="Site already exists") from None

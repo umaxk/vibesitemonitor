@@ -47,6 +47,7 @@ def serialize_site(row) -> dict:
     site = dict(row)
     site["tags"] = _decode_tags(site.get("tags"))
     site["paused"] = bool(site.get("paused"))
+    site["check_enabled"] = bool(site.get("check_enabled", 1))
     site["public"] = bool(site.get("public"))
     expires = site.get("ssl_expires_at")
     site["ssl_expired"] = bool(expires and expires <= time.time())
@@ -205,7 +206,7 @@ def uptime_map(since: float) -> dict[int, float]:
 
 
 def list_sites(public_only: bool = False) -> list[dict]:
-    where = "WHERE s.public = 1" if public_only else ""
+    where = "WHERE s.public = 1 AND s.check_enabled = 1" if public_only else ""
     rows = db.query_all(
         "SELECT s.*, "
         "(SELECT started_at FROM incidents i WHERE i.site_id=s.id "
@@ -247,19 +248,22 @@ def create_site(
     check_interval_seconds: int | None,
     tags: list[str],
     public: bool,
+    check_enabled: bool = True,
 ) -> dict:
     now = time.time()
     with db.transaction() as conn:
         cursor = conn.execute(
             "INSERT INTO sites "
-            "(url, name, check_interval_seconds, tags, public, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "(url, name, check_interval_seconds, tags, public, check_enabled, "
+            "created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 url,
                 name or url,
                 check_interval_seconds,
                 _encode_tags(tags),
                 1 if public else 0,
+                1 if check_enabled else 0,
                 now,
                 now,
             ),
@@ -275,40 +279,65 @@ def update_site(
     check_interval_seconds: int | None,
     tags: list[str],
     public: bool,
+    check_enabled: bool = True,
 ) -> dict | None:
+    now = time.time()
     with db.transaction() as conn:
-        row = conn.execute("SELECT url FROM sites WHERE id=?", (site_id,)).fetchone()
+        row = conn.execute(
+            "SELECT url, check_enabled FROM sites WHERE id=?", (site_id,)
+        ).fetchone()
         if not row:
             return None
         url_changed = row["url"] != url
+        was_enabled = bool(row["check_enabled"])
         if url_changed:
             conn.execute(
                 "UPDATE sites SET url=?, name=?, check_interval_seconds=?, "
-                "tags=?, public=?, ssl_expires_at=NULL, ssl_checked_at=NULL, "
-                "ssl_error=NULL, ssl_alerted=0, updated_at=? WHERE id=?",
+                "tags=?, public=?, check_enabled=?, ssl_expires_at=NULL, "
+                "ssl_checked_at=NULL, ssl_error=NULL, ssl_alerted=0, "
+                "updated_at=? WHERE id=?",
                 (
                     url,
                     name or url,
                     check_interval_seconds,
                     _encode_tags(tags),
                     1 if public else 0,
-                    time.time(),
+                    1 if check_enabled else 0,
+                    now,
                     site_id,
                 ),
             )
         else:
             conn.execute(
                 "UPDATE sites SET url=?, name=?, check_interval_seconds=?, "
-                "tags=?, public=?, updated_at=? WHERE id=?",
+                "tags=?, public=?, check_enabled=?, updated_at=? WHERE id=?",
                 (
                     url,
                     name or url,
                     check_interval_seconds,
                     _encode_tags(tags),
                     1 if public else 0,
-                    time.time(),
+                    1 if check_enabled else 0,
+                    now,
                     site_id,
                 ),
+            )
+        if was_enabled and not check_enabled:
+            conn.execute(
+                "UPDATE incidents SET ended_at=? "
+                "WHERE site_id=? AND ended_at IS NULL",
+                (now, site_id),
+            )
+            conn.execute(
+                "UPDATE sites SET last_status='unknown', last_error=NULL "
+                "WHERE id=?",
+                (site_id,),
+            )
+        elif check_enabled and not was_enabled:
+            conn.execute(
+                "UPDATE sites SET last_status='unknown', last_error=NULL "
+                "WHERE id=?",
+                (site_id,),
             )
     return get_site(site_id)
 
@@ -648,7 +677,9 @@ def _open_incident(conn, site_id: int):
     ).fetchone()
 
 
-def record_check(site_id: int, result: dict) -> dict | None:
+def record_check(
+    site_id: int, result: dict, track_incidents: bool = True
+) -> dict | None:
     """Persist a check and return a transition event, if any."""
     now = time.time()
     with db.transaction() as conn:
@@ -680,6 +711,8 @@ def record_check(site_id: int, result: dict) -> dict | None:
                 site_id,
             ),
         )
+        if not track_incidents:
+            return None
         event = None
         if result["status"] == "down":
             incident = _open_incident(conn, site_id)
@@ -747,6 +780,7 @@ def list_incidents(
         params.append(since)
     if public_only:
         where.append("s.public = 1")
+        where.append("s.check_enabled = 1")
     if open_only:
         where.append("i.ended_at IS NULL")
     clause = f"WHERE {' AND '.join(where)}" if where else ""

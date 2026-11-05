@@ -221,6 +221,9 @@ function formatPercent(value) {
 
 function siteStatus(site) {
     if (site.paused) return { key: 'paused', label: I18n.t('status.paused') };
+    if (site.check_enabled === false) {
+        return { key: 'endpoints', label: I18n.t('status.endpointsOnly') };
+    }
     if (site.last_status === 'up') return { key: 'up', label: I18n.t('status.up') };
     if (site.last_status === 'down') return { key: 'down', label: I18n.t('status.down') };
     return { key: 'unknown', label: I18n.t('status.unknown') };
@@ -256,7 +259,12 @@ function sslBadge(site) {
 
 function incidentNotice(site) {
     const hideHours = Number(state.meta.incident_hide_hours || 12);
-    if (site.paused || site.last_status !== 'down' || !site.last_incident_time) return '';
+    if (
+        site.paused
+        || site.check_enabled === false
+        || site.last_status !== 'down'
+        || !site.last_incident_time
+    ) return '';
     if (Date.now() / 1000 - site.last_incident_time > hideHours * 3600) return '';
     return `<div class="incident-strip">${escapeHtml(I18n.t('incident.since', { date: formatDate(site.last_incident_time) }))}</div>`;
 }
@@ -282,7 +290,7 @@ function renderSites() {
                 return av - bv;
             }
             if (state.filters.sort === 'status') {
-                const rank = { down: 0, unknown: 1, paused: 2, up: 3 };
+                const rank = { down: 0, unknown: 1, endpoints: 2, paused: 3, up: 4 };
                 const diff = rank[siteStatus(a).key] - rank[siteStatus(b).key];
                 if (diff !== 0) return diff;
             }
@@ -316,7 +324,9 @@ function renderSites() {
                 </div>
                 ${incidentNotice(site)}
                 <div class="site-meta">
-                    <span>${site.last_check ? escapeHtml(I18n.t('card.checkedAt', { ago: formatAgo(site.last_check) })) : escapeHtml(I18n.t('card.neverChecked'))}</span>
+                    <span>${site.check_enabled === false
+                        ? escapeHtml(I18n.t(site.last_check ? 'card.manualCheck' : 'card.siteCheckOff', { ago: formatAgo(site.last_check) }))
+                        : (site.last_check ? escapeHtml(I18n.t('card.checkedAt', { ago: formatAgo(site.last_check) })) : escapeHtml(I18n.t('card.neverChecked')))}</span>
                     <span>HTTP ${site.last_http_code ?? '—'}</span>
                     <span>${escapeHtml(formatLatency(site.last_latency_ms))}</span>
                     <span>${escapeHtml(I18n.t('card.uptime24', { value: formatPercent(site.uptime_24h) }))}</span>
@@ -325,12 +335,12 @@ function renderSites() {
                     ${site.paused ? `<span class="badge">${escapeHtml(I18n.t('status.paused'))}</span>` : ''}
                     ${site.public ? `<span class="badge badge-public">${escapeHtml(I18n.t('card.badgePublic'))}</span>` : ''}
                     ${site.endpoints_count ? `<span class="badge ${site.endpoints_down ? 'badge-danger' : 'badge-ok'}">${escapeHtml(I18n.t('card.endpoints', { down: site.endpoints_down || 0, total: site.endpoints_count }))}</span>` : ''}
-                    ${sslBadge(site)}
+                    ${site.check_enabled === false ? '' : sslBadge(site)}
                 </div>
                 ${tags ? `<div class="tags">${tags}</div>` : ''}
                 ${site.last_status === 'down' && site.last_error ? `<div class="site-error">${escapeHtml(site.last_error)}</div>` : ''}
                 <div class="site-card-footer">
-                    <span class="hint">${site.check_interval_seconds ? escapeHtml(I18n.t('card.everyNsec', { n: site.check_interval_seconds })) : ''}</span>
+                    <span class="hint">${site.check_enabled !== false && site.check_interval_seconds ? escapeHtml(I18n.t('card.everyNsec', { n: site.check_interval_seconds })) : ''}</span>
                     ${actions}
                 </div>
             </article>`;
@@ -544,7 +554,7 @@ function renderStatCards(stats, site) {
             <div class="stat-card"><span>${escapeHtml(I18n.t('detail.statUptime'))}</span><strong>${escapeHtml(formatPercent(stats.uptime_percent))}</strong></div>
             <div class="stat-card"><span>${escapeHtml(I18n.t('detail.statChecks'))}</span><strong>${stats.checks_count ?? 0}</strong></div>
             <div class="stat-card"><span>${escapeHtml(I18n.t('detail.statAvgLatency'))}</span><strong>${escapeHtml(formatLatency(stats.avg_latency_ms))}</strong></div>
-            <div class="stat-card"><span>${escapeHtml(I18n.t('ssl.column'))}</span><strong>${site.ssl_expires_at ? escapeHtml(formatDate(site.ssl_expires_at)) : '—'}</strong></div>
+            <div class="stat-card"><span>${escapeHtml(I18n.t('ssl.column'))}</span><strong>${site.check_enabled === false || !site.ssl_expires_at ? '—' : escapeHtml(formatDate(site.ssl_expires_at))}</strong></div>
         </div>`;
 }
 
@@ -627,7 +637,7 @@ function renderDetail(site, stats, incidents, checks, endpoints = []) {
                     <span class="status-pill ${status.key}"><span class="dot"></span>${status.label}</span>
                     ${site.paused ? '<span class="badge">Пауза</span>' : ''}
                     ${site.public ? '<span class="badge badge-public">Публичный</span>' : ''}
-                    ${sslBadge(site)}
+                    ${site.check_enabled === false ? '' : sslBadge(site)}
                 </div>
             </div>
             <div class="detail-actions">
@@ -637,6 +647,7 @@ function renderDetail(site, stats, incidents, checks, endpoints = []) {
                     <button class="btn-danger small" data-detail-action="delete">${escapeHtml(I18n.t('common.delete'))}</button>` : ''}
             </div>
         </div>
+        ${site.check_enabled === false ? `<div class="notice-strip">${escapeHtml(I18n.t('detail.siteCheckDisabled'))}</div>` : ''}
         <div class="range-switch">
             ${['24h', '7d', '30d'].map((range) => `
                 <button class="range-btn ${state.detailRange === range ? 'active' : ''}" data-range="${range}">${range}</button>
@@ -1010,6 +1021,7 @@ function openAddSite(site = null) {
     $('#new-site-interval').value = site?.check_interval_seconds || '';
     $('#new-site-tags').value = site?.tags?.join(', ') || '';
     $('#new-site-public').checked = Boolean(site?.public);
+    $('#new-site-check').checked = site ? site.check_enabled !== false : true;
     openModal('add-modal');
     setTimeout(() => $('#new-site-url').focus(), 50);
 }
@@ -1020,6 +1032,7 @@ async function saveSite() {
     const interval = $('#new-site-interval').value;
     const tags = $('#new-site-tags').value.split(',').map((tag) => tag.trim()).filter(Boolean);
     const isPublic = $('#new-site-public').checked;
+    const checkEnabled = $('#new-site-check').checked;
     if (!url) {
         toast(I18n.t('toast.needUrl'), 'error');
         return;
@@ -1029,7 +1042,8 @@ async function saveSite() {
         name,
         check_interval_seconds: interval ? Number(interval) : null,
         tags,
-        public: isPublic
+        public: isPublic,
+        check_enabled: checkEnabled
     };
     try {
         if (state.editingSiteId) {
