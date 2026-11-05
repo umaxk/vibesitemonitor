@@ -97,8 +97,7 @@
                 chartUptime: 'Аптайм',
                 chartIncidents: 'Инциденты',
                 latencyDataset: 'Задержка, мс',
-                uptimeDataset: 'Аптайм, %',
-                siteCheckDisabled: 'Автоматическая проверка сайта и SSL отключена. Эндпоинты проверяются как обычно; сайт можно проверить вручную.'
+                uptimeDataset: 'Аптайм, %'
             },
             incidents: {
                 none: 'Инцидентов за выбранный период нет.',
@@ -374,8 +373,7 @@
                 chartUptime: 'Uptime',
                 chartIncidents: 'Incidents',
                 latencyDataset: 'Latency, ms',
-                uptimeDataset: 'Uptime, %',
-                siteCheckDisabled: 'Automatic site and SSL checks are disabled. Endpoints keep running; you can still check the site manually.'
+                uptimeDataset: 'Uptime, %'
             },
             incidents: {
                 none: 'No incidents in the selected period.',

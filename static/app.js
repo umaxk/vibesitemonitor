@@ -285,6 +285,9 @@ function renderSites() {
             return matchesSearch && matchesStatus && matchesTag;
         })
         .sort((a, b) => {
+            const aEndpointOnly = a.check_enabled === false ? 1 : 0;
+            const bEndpointOnly = b.check_enabled === false ? 1 : 0;
+            if (aEndpointOnly !== bEndpointOnly) return aEndpointOnly - bEndpointOnly;
             if (state.filters.sort === 'latency') {
                 const av = a.last_latency_ms ?? Number.MAX_SAFE_INTEGER;
                 const bv = b.last_latency_ms ?? Number.MAX_SAFE_INTEGER;
@@ -352,6 +355,26 @@ function syncFilterHighlight() {
     $('#status-filter').classList.toggle('is-active', state.filters.status !== 'all');
     $('#tag-filter').classList.toggle('is-active', state.filters.tag !== 'all');
     $('#sort-select').classList.toggle('is-active', state.filters.sort !== 'name');
+}
+
+function toggleFilterPanel(toggleSelector, panelSelector) {
+    const toggle = $(toggleSelector);
+    const panel = $(panelSelector);
+    if (!toggle || !panel) return;
+    const open = panel.classList.toggle('open');
+    toggle.setAttribute('aria-expanded', String(open));
+}
+
+function closeFilterPanels() {
+    [
+        ['#filters-toggle', '#filter-selects'],
+        ['#endpoint-filters-toggle', '#endpoint-filter-selects']
+    ].forEach(([toggleSelector, panelSelector]) => {
+        const toggle = $(toggleSelector);
+        const panel = $(panelSelector);
+        if (panel) panel.classList.remove('open');
+        if (toggle) toggle.setAttribute('aria-expanded', 'false');
+    });
 }
 
 function populateTagFilter() {
@@ -649,7 +672,6 @@ function renderDetail(site, stats, incidents, checks, endpoints = []) {
                     <button class="btn-danger small" data-detail-action="delete">${escapeHtml(I18n.t('common.delete'))}</button>` : ''}
             </div>
         </div>
-        ${site.check_enabled === false ? `<div class="notice-strip">${escapeHtml(I18n.t('detail.siteCheckDisabled'))}</div>` : ''}
         <div class="range-switch">
             ${['24h', '7d', '30d'].map((range) => `
                 <button class="range-btn ${state.detailRange === range ? 'active' : ''}" data-range="${range}">${range}</button>
@@ -1232,6 +1254,10 @@ function setMode(mode) {
     $('#search-input').classList.toggle('hidden', !sitesMode);
     $('#filters-toggle').classList.toggle('hidden', !sitesMode);
     $('#filter-selects').classList.toggle('hidden', !sitesMode);
+    $('#endpoint-search').classList.toggle('hidden', sitesMode);
+    $('#endpoint-filters-toggle').classList.toggle('hidden', sitesMode);
+    $('#endpoint-filter-selects').classList.toggle('hidden', sitesMode);
+    closeFilterPanels();
     const fab = $('#add-site-btn');
     const fabTitle = I18n.t(sitesMode ? 'fab.title' : 'endpoint.add');
     fab.setAttribute('title', fabTitle);
@@ -1467,24 +1493,23 @@ function bindEvents() {
 
     $('#filters-toggle').addEventListener('click', (event) => {
         event.stopPropagation();
-        const open = $('#filter-selects').classList.toggle('open');
-        $('#filters-toggle').setAttribute('aria-expanded', String(open));
+        toggleFilterPanel('#filters-toggle', '#filter-selects');
+    });
+
+    $('#endpoint-filters-toggle').addEventListener('click', (event) => {
+        event.stopPropagation();
+        toggleFilterPanel('#endpoint-filters-toggle', '#endpoint-filter-selects');
     });
 
     document.addEventListener('click', (event) => {
         if (!event.target.closest('#user-menu')) closeUserMenu();
-        const panel = $('#filter-selects');
-        if (panel.classList.contains('open') && !event.target.closest('.header-toolbar')) {
-            panel.classList.remove('open');
-            $('#filters-toggle').setAttribute('aria-expanded', 'false');
-        }
+        if (!event.target.closest('.header-toolbar')) closeFilterPanels();
     });
 
     document.addEventListener('keydown', (event) => {
         if (event.key !== 'Escape') return;
         closeUserMenu();
-        $('#filter-selects').classList.remove('open');
-        $('#filters-toggle').setAttribute('aria-expanded', 'false');
+        closeFilterPanels();
     });
 
     $('#logout-all-btn').addEventListener('click', async () => {
