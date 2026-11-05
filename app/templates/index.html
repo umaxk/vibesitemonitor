@@ -27,46 +27,50 @@
                     <button type="button" class="mode-btn" data-mode="endpoints" data-i18n="mode.endpoints">Эндпоинты</button>
                 </nav>
                 <input type="search" id="search-input" class="search-input" placeholder="Поиск сайта..." data-i18n-placeholder="header.searchPlaceholder">
-                <button id="filters-toggle" class="btn-ghost filters-toggle" title="Фильтры" data-i18n-title="header.filtersTitle" aria-expanded="false">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                        <path d="M2 4h12M4.5 8h7M6.5 12h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-                    </svg>
-                </button>
-                <div id="filter-selects" class="filter-selects">
-                    <select id="status-filter" class="select-input">
-                        <option value="all" data-i18n="filter.statusAll">Все статусы</option>
-                        <option value="up" data-i18n="filter.statusUp">Доступны</option>
-                        <option value="down" data-i18n="filter.statusDown">Недоступны</option>
-                        <option value="unknown" data-i18n="filter.statusUnknown">Без данных</option>
-                        <option value="endpoints" data-i18n="filter.statusEndpoints">Только эндпоинты</option>
-                        <option value="paused" data-i18n="filter.statusPaused">На паузе</option>
-                    </select>
-                    <select id="tag-filter" class="select-input">
-                        <option value="all" data-i18n="filter.tagAll">Все теги</option>
-                    </select>
-                    <select id="sort-select" class="select-input">
-                        <option value="name" data-i18n="filter.sortName">По имени</option>
-                        <option value="status" data-i18n="filter.sortStatus">По статусу</option>
-                        <option value="latency" data-i18n="filter.sortLatency">По задержке</option>
-                    </select>
+                <div class="filter-menu">
+                    <button id="filters-toggle" class="btn-ghost filters-toggle" title="Фильтры" data-i18n-title="header.filtersTitle" aria-expanded="false">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            <path d="M2 4h12M4.5 8h7M6.5 12h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                    <div id="filter-selects" class="filter-selects">
+                        <select id="status-filter" class="select-input">
+                            <option value="all" data-i18n="filter.statusAll">Все статусы</option>
+                            <option value="up" data-i18n="filter.statusUp">Доступны</option>
+                            <option value="down" data-i18n="filter.statusDown">Недоступны</option>
+                            <option value="unknown" data-i18n="filter.statusUnknown">Без данных</option>
+                            <option value="endpoints" data-i18n="filter.statusEndpoints">Только эндпоинты</option>
+                            <option value="paused" data-i18n="filter.statusPaused">На паузе</option>
+                        </select>
+                        <select id="tag-filter" class="select-input">
+                            <option value="all" data-i18n="filter.tagAll">Все теги</option>
+                        </select>
+                        <select id="sort-select" class="select-input">
+                            <option value="name" data-i18n="filter.sortName">По имени</option>
+                            <option value="status" data-i18n="filter.sortStatus">По статусу</option>
+                            <option value="latency" data-i18n="filter.sortLatency">По задержке</option>
+                        </select>
+                    </div>
                 </div>
                 <input type="search" id="endpoint-search" class="search-input hidden" placeholder="Поиск эндпоинта..." data-i18n-placeholder="endpoint.searchPlaceholder">
-                <button id="endpoint-filters-toggle" class="btn-ghost filters-toggle hidden" title="Фильтры" data-i18n-title="header.filtersTitle" aria-expanded="false">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                        <path d="M2 4h12M4.5 8h7M6.5 12h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-                    </svg>
-                </button>
-                <div id="endpoint-filter-selects" class="filter-selects hidden">
-                    <select id="endpoint-site-filter" class="select-input">
-                        <option value="all" data-i18n="endpoint.siteAll">Все сайты</option>
-                    </select>
-                    <select id="endpoint-status-filter" class="select-input">
-                        <option value="all" data-i18n="filter.statusAll">Все статусы</option>
-                        <option value="up" data-i18n="filter.statusUp">Доступны</option>
-                        <option value="down" data-i18n="filter.statusDown">Недоступны</option>
-                        <option value="unknown" data-i18n="filter.statusUnknown">Без данных</option>
-                        <option value="paused" data-i18n="filter.statusPaused">На паузе</option>
-                    </select>
+                <div class="filter-menu">
+                    <button id="endpoint-filters-toggle" class="btn-ghost filters-toggle hidden" title="Фильтры" data-i18n-title="header.filtersTitle" aria-expanded="false">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            <path d="M2 4h12M4.5 8h7M6.5 12h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                    <div id="endpoint-filter-selects" class="filter-selects hidden">
+                        <select id="endpoint-site-filter" class="select-input">
+                            <option value="all" data-i18n="endpoint.siteAll">Все сайты</option>
+                        </select>
+                        <select id="endpoint-status-filter" class="select-input">
+                            <option value="all" data-i18n="filter.statusAll">Все статусы</option>
+                            <option value="up" data-i18n="filter.statusUp">Доступны</option>
+                            <option value="down" data-i18n="filter.statusDown">Недоступны</option>
+                            <option value="unknown" data-i18n="filter.statusUnknown">Без данных</option>
+                            <option value="paused" data-i18n="filter.statusPaused">На паузе</option>
+                        </select>
+                    </div>
                 </div>
             </div>
             <div class="header-controls">

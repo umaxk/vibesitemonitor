@@ -243,11 +243,21 @@ textarea {
     flex-shrink: 0;
 }
 
+.filter-menu {
+    position: relative;
+    flex-shrink: 0;
+}
+
 .filters-toggle {
-    display: none;
+    display: inline-flex;
     border: 1px solid var(--border);
     width: 38px;
     flex-shrink: 0;
+}
+
+.filters-toggle.is-active {
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
 /* Search and filters */
@@ -256,6 +266,33 @@ textarea {
     min-width: 180px;
     flex: 1;
     max-width: 420px;
+}
+
+.filter-selects {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    z-index: 20;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    width: 270px;
+    padding: 0.8rem;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.filter-selects.open {
+    display: flex;
+    animation: dropdown-in 0.15s ease;
+}
+
+.filter-selects .select-input {
+    width: 100%;
+    max-width: none;
 }
 
 .select-input {
@@ -1669,38 +1706,23 @@ body.light .modal {
         min-width: 0;
     }
 
-    .header-toolbar .filters-toggle {
+    .header-toolbar .filter-menu {
         grid-area: filters;
     }
 
-    .filters-toggle {
-        display: inline-flex;
+    .filter-menu {
+        position: static;
     }
 
     .filter-selects {
-        position: absolute;
         top: 100%;
         left: 0;
         right: 0;
-        display: none;
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0.5rem;
+        width: auto;
         padding: 0.9rem 1rem 1rem;
-        background: var(--panel);
+        border: none;
         border-bottom: 1px solid var(--border);
-        box-shadow: var(--shadow);
-        z-index: 20;
-    }
-
-    .filter-selects.open {
-        display: flex;
-        animation: dropdown-in 0.15s ease;
-    }
-
-    .filter-selects .select-input {
-        max-width: none;
-        width: 100%;
+        border-radius: 0;
     }
 
     .user-menu-btn {

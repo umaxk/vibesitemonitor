@@ -355,6 +355,20 @@ function syncFilterHighlight() {
     $('#status-filter').classList.toggle('is-active', state.filters.status !== 'all');
     $('#tag-filter').classList.toggle('is-active', state.filters.tag !== 'all');
     $('#sort-select').classList.toggle('is-active', state.filters.sort !== 'name');
+    $('#filters-toggle').classList.toggle(
+        'is-active',
+        state.filters.status !== 'all'
+        || state.filters.tag !== 'all'
+        || state.filters.sort !== 'name'
+    );
+}
+
+function syncEndpointFilterHighlight() {
+    $('#endpoint-filters-toggle').classList.toggle(
+        'is-active',
+        state.endpointFilters.site !== 'all'
+        || state.endpointFilters.status !== 'all'
+    );
 }
 
 function toggleFilterPanel(toggleSelector, panelSelector) {
@@ -426,6 +440,7 @@ async function loadEndpoints() {
 }
 
 function renderEndpoints() {
+    syncEndpointFilterHighlight();
     const list = $('#endpoints-list');
     const search = state.endpointFilters.search.toLowerCase();
     const filtered = state.endpoints
